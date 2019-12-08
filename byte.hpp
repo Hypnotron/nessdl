@@ -55,4 +55,3 @@ void writeBytes(AddressType address, DataType data) {
         data = little ? data >> 8 : data << 8;
     }
 }
-        

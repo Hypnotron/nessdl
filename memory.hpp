@@ -106,11 +106,18 @@ class MappedMemoryIterator {
             return *this;
         }
 
-        MappedMemoryValue<DataType, AddressType> operator*() const {
+        MappedMemoryValue<DataType, AddressType> operator* () const {
             return MappedMemoryValue<DataType, AddressType>(
                     mappedMemory, currentAddress
             );
         }
+
+        MappedMemoryValue<DataType, AddressType> operator[] 
+                (const AddressType offset) const {
+            return MappedMemoryValue<DataType, AddressType>(
+                    mappedMemory, currentAddress + offset
+            );
+        } 
 
         friend bool operator== ( 
                 const MappedMemoryIterator& left, 
@@ -153,50 +160,50 @@ class MappedMemoryIterator {
             return left.currentAddress <= right.currentAddress;
         }
 
-        MappedMemoryIterator& operator++() {
+        MappedMemoryIterator& operator++ () {
             ++currentAddress;
             return *this;
         }
-        MappedMemoryIterator& operator--() {
+        MappedMemoryIterator& operator-- () {
             --currentAddress;
             return *this;
         }
-        MappedMemoryIterator operator++(int) {
+        MappedMemoryIterator operator++ (int) {
             auto old {*this};
             ++currentAddress;
             return old;
         }
-        MappedMemoryIterator operator--(int) {
+        MappedMemoryIterator operator-- (int) {
             auto old {*this};
             --currentAddress;
             return old;
+        }
+
+        MappedMemoryIterator& operator+= (const AddressType offset) {
+            currentAddress += offset;
+            return *this;
+        }
+        MappedMemoryIterator& operator-= (const AddressType offset) {
+            currentAddress -= offset;
+            return *this; 
         }
         
-        friend MappedMemoryIterator operator+(
+        friend MappedMemoryIterator operator+ (
                 const MappedMemoryIterator& left, 
-                AddressType right
+                const AddressType right
         ) { 
             return MappedMemoryIterator(left.mappedMemory, left.currentAddress + right);
         }
-        friend MappedMemoryIterator operator+(
-                AddressType left,
+        friend MappedMemoryIterator operator+ (
+                const AddressType left,
                 const MappedMemoryIterator& right
         ) {
             return MappedMemoryIterator(right.mappedMemory, right.currentAddress + left);
         }
-        friend MappedMemoryIterator operator-(
+        friend MappedMemoryIterator operator- (
                 const MappedMemoryIterator& left,
-                AddressType right
+                const AddressType right
         ) {
             return MappedMemoryIterator(left.mappedMemory, left.currentAddress - right);
         }
-
-        //TODO: All random-access iterator overloads
-        //      (dereference to MappedMemoryValue, adjust
-        //      currentAddress during increment/decrement,
-        //      compare mappedMemory pointer directly and 
-        //      currentAddress during comparison, shortcut
-        //      offset and dereference with subscript[] operator,
-        //      return reference to self after increment, etc.)
-        //TODO: MappedMemory.end(): Past-the-end iteration
 };
