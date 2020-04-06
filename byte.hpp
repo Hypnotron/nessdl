@@ -1,25 +1,25 @@
 #pragma once
-#include <cstdint>
+#include <tr1/cstdint>
 
-using u8 =  std::uint8_t;
-using u16 = std::uint16_t;
-using u32 = std::uint32_t;
-using u64 = std::uint64_t;
+using u8 =  std::tr1::uint8_t;
+using u16 = std::tr1::uint16_t;
+using u32 = std::tr1::uint32_t;
+using u64 = std::tr1::uint64_t;
 
-using s8 =  std::int8_t;
-using s16 = std::int16_t;
-using s32 = std::int32_t;
-using s64 = std::int64_t;
+using s8 =  std::tr1::int8_t;
+using s16 = std::tr1::int16_t;
+using s32 = std::tr1::int32_t;
+using s64 = std::tr1::int64_t;
 
-using u8_fast  = std::uint_fast8_t;
-using u16_fast = std::uint_fast16_t;
-using u32_fast = std::uint_fast32_t;
-using u64_fast = std::uint_fast64_t;
+using u8_fast  = std::tr1::uint_fast8_t;
+using u16_fast = std::tr1::uint_fast16_t;
+using u32_fast = std::tr1::uint_fast32_t;
+using u64_fast = std::tr1::uint_fast64_t;
 
-using s8_fast  = std::int_fast8_t;
-using s16_fast = std::int_fast16_t;
-using s32_fast = std::int_fast32_t;
-using s64_fast = std::int_fast64_t;
+using s8_fast  = std::tr1::int_fast8_t;
+using s16_fast = std::tr1::int_fast16_t;
+using s32_fast = std::tr1::int_fast32_t;
+using s64_fast = std::tr1::int_fast64_t;
 
 enum class Endianness {
     LITTLE,
