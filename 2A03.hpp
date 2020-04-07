@@ -30,17 +30,14 @@ class Cpu {
         u8 value;
         u16 pointerAddress;
         u16 address;
-        std::vector<std::function<void()>>::const_iterator instrCycle {
-            instrCycles[opcode].end()
-        };
+        std::vector<std::function<void()>>::const_iterator instrCycle;
 
         //TODO: General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
             return memory[0x0100 + sp];
         };
-        inline void push(u8 value) {
+        inline void push(const u8 value) {
             memory[0x0100 + sp] = value;
-            --sp;
         }
 
         //TODO: Table of CPU operations (where indices are opcodes):
@@ -565,6 +562,9 @@ class Cpu {
             //Dummy read of the byte after the opcode:
             static_cast<u8>(memory[pc]);
         };
+        const std::function<void()> doOp = [&] () {
+            operations[opcode]();
+        };
 
         //TODO: Individual cycle breakdown for each instruction:
         const std::vector<std::vector<std::function<void()
@@ -613,9 +613,7 @@ class Cpu {
             /*3: Stack push timing */ {
                 dummyReadNextByte,
                 [&] () {
-                    memory[0x0100 + sp] = opcode == 0x48
-                         /*opcode PHA*/ ? a 
-                         /*opcode PHP*/ : (p |= (1 << FROM_INSTRUCTION)); 
+                    doOp();
                     --sp;
                 },
             },
@@ -627,9 +625,7 @@ class Cpu {
                     //static_cast<u8>(memory[0x0100 + sp]);
                     ++sp;
                 },
-                [&] () {
-                    operations[opcode]();
-                }
+                doOp,
             },
             /*5: JSR timing */ {
                 [&] () {
@@ -651,12 +647,113 @@ class Cpu {
                     pc = memory[pc] << 8 | address;
                 },
             },
-            /*6: Im TODO */
-
+            /*6: Implied timing */ {
+                doOp,
+            },
+            /*7: Immediate timing */ {
+                [&] () {
+                    value = memory[pc];
+                    ++pc;
+                    doOp();
+                },
+            }, 
+            /*8: Absolute JMP timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    pc = memory[pc] << 8 | address;
+                },
+            },
+            /*9: Absolute read timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    address |= memory[pc] << 8;
+                    ++pc;
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                },
+            },
+            /*10: Absolute read-modify-write timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    address |= memory[pc] << 8;
+                    ++pc;
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value;
+                },
+            },
+            /*11: Absolute write timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    address |= memory[pc] << 8; 
+                    ++pc;
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
+            /*12: Zero page read timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                },
+            },
+            /*13: Zero page read-modify-write timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value;
+                },
+            },
+            /*14: Zero page write timing */ {
+                [&] () {
+                    address = memory[pc];
+                    ++pc;
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
         };
 
         //TODO: Timings
-        std::vector<u8_fast> instrTimings {};
+        const std::vector<u8_fast> instrTimings {};
 
 
     public:
