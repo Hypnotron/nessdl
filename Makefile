@@ -12,7 +12,7 @@ WIN_CPPFLAGS += -DOS_WINDOWS
 WIN_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,-Bstatic -lstdc++ -lpthread \
                 -Wl,-Bdynamic -lmingw32 -lSDL2main -lSDL2 
 
-MAC_CC = o64-clang++
+MAC_CC = /home/main/src/osxcross/target/bin/o64-clang++ 
 MAC_CPPFLAGS += -DOS_MACOS 
 MAC_LDFLAGS += -F./build -framework SDL2 -rpath @executable_path/../Frameworks 
 

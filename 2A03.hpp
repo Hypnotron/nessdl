@@ -1,5 +1,6 @@
 #pragma once
 #include "byte.hpp"
+#include "debug.hpp"
 #include "memory.hpp"
 #include <functional>
 
@@ -580,15 +581,15 @@ class Cpu {
                     ++sp;
                 },
                 [&] () {
-                    p = memory[0x0100 + sp];
+                    p = pull(); 
                     ++sp;
                 },
                 [&] () {
-                    pc = memory[0x0100 + sp];
-                    ++sp;
+                    pc = pull();
+                    ++sp; 
                 },
                 [&] () {
-                    pc |= memory[0x0100 + sp] << 8;
+                    pc |= pull() << 8;
                 },
             },
             /*2: RTS timing */ {
@@ -600,11 +601,11 @@ class Cpu {
                     ++sp;
                 },
                 [&] () {
-                    pc = memory[0x0100 + sp];
-                    ++sp;
+                    pc = pull();
+                    ++sp; 
                 },
                 [&] () {
-                    pc |= memory[0x0100 + sp] << 8;
+                    pc |= pull() << 8; 
                 },
                 [&] () {
                     ++pc;
@@ -629,19 +630,18 @@ class Cpu {
             },
             /*5: JSR timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [] () {
                     //DISCREPANCY: idek what this cycle is
                 },
                 [&] () {
-                    memory[0x0100 + sp] = pc >> 8;
+                    push(pc >> 8);
                     --sp;
                 },
                 [&] () {
-                    memory[0x0100 + sp] = pc & 0x00FF;
-                    --sp;
+                    push(pc & 0x00FF);
+                    --sp; 
                 },
                 [&] () {
                     pc = memory[pc] << 8 | address;
@@ -652,15 +652,13 @@ class Cpu {
             },
             /*7: Immediate timing */ {
                 [&] () {
-                    value = memory[pc];
-                    ++pc;
+                    value = memory[pc++];
                     doOp();
                 },
             }, 
             /*8: Absolute JMP timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
                     pc = memory[pc] << 8 | address;
@@ -668,12 +666,10 @@ class Cpu {
             },
             /*9: Absolute read timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
-                    address |= memory[pc] << 8;
-                    ++pc;
+                    address |= memory[pc++] << 8;
                 },
                 [&] () {
                     value = memory[address];
@@ -682,12 +678,10 @@ class Cpu {
             },
             /*10: Absolute read-modify-write timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
-                    address |= memory[pc] << 8;
-                    ++pc;
+                    address |= memory[pc++] << 8;
                 },
                 [&] () {
                     value = memory[address];
@@ -702,12 +696,10 @@ class Cpu {
             },
             /*11: Absolute write timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
-                    address |= memory[pc] << 8; 
-                    ++pc;
+                    address |= memory[pc++] << 8; 
                 },
                 [&] () {
                     doOp();
@@ -716,8 +708,7 @@ class Cpu {
             },
             /*12: Zero page read timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
                     value = memory[address];
@@ -726,8 +717,7 @@ class Cpu {
             },
             /*13: Zero page read-modify-write timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
                     value = memory[address];
@@ -742,8 +732,7 @@ class Cpu {
             },
             /*14: Zero page write timing */ {
                 [&] () {
-                    address = memory[pc];
-                    ++pc;
+                    address = memory[pc++];
                 },
                 [&] () {
                     doOp();
