@@ -739,6 +739,7 @@ class Cpu {
                     memory[address] = value;
                 },
             },
+            /*15: Absolute indexed read timing */ {
         };
 
         //TODO: Timings
