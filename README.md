@@ -8,7 +8,7 @@ Releases will be made available at some point in time for:
 + Windows
 + Android
 
-# Compiling (currently broken)
+# Compiling on Linux (currently broken)
 ##### Prerequisites
 + clang
 + SDL2
