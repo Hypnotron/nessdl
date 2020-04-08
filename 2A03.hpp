@@ -1,8 +1,9 @@
 #pragma once
-#include "byte.hpp"
-#include "debug.hpp"
-#include "memory.hpp"
+#include <cassert>
 #include <functional>
+#include "debug.hpp"
+#include "byte.hpp"
+#include "memory.hpp"
 
 class Cpu {
     //TODO: Power-up state
@@ -34,6 +35,18 @@ class Cpu {
         u16 address;
         std::vector<std::function<void()>>::const_iterator instrCycle;
 
+        //Interrupt fields:
+        //IRQ level (where > 0 is low):
+        u32 irqLevel; 
+        u8_fast irqDevices;
+        //NMI level (where true means edge):
+        bool nmiLevel; 
+        //Interrupt status (updated before final cycle or manually):
+        bool irqPending; 
+        bool nmiPending;
+        //Toggles default interrupt polling behavior (before final cycle):
+        bool defaultInterruptPoll; 
+
         //TODO: General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
             return memory[0x0100 + sp];
@@ -41,522 +54,47 @@ class Cpu {
         inline void push(const u8 value) {
             memory[0x0100 + sp] = value;
         }
+        inline void pollInterrupts() {
+            nmiPending = nmiLevel;
+            nmiLevel = false;
+            irqPending = irqLevel && ~(p >> INTERRUPT_DISABLE & 0x01);
+        }
+
+        //TODO: Specialized CPU operations:
+        const std::function<void()> NOP = [&] () {};
+        const std::function<void()> ORA = [&] () {
+            a |= value;
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> SLO = [&] () {
+            setBit(p, CARRY, value & 0x80);
+            value <<= 1;
+            a |= value; 
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> ASL = [&] () {
+            setBit(p, CARRY, value & 0x80);
+            value <<= 1;
+            setBit(p, ZERO, value == 0);
+            setBit(p, NEGATIVE, value & 0x80);
+        };
+        const std::function<void()> PHP = [&] () {
+            setBit(p, FROM_INSTRUCTION, 1);
+            push(p); 
+        };
+        const std::function<void()> ANC = [&] () {
+            a &= value;
+            setBit(p, NEGATIVE, a & 0x80);
+            setBit(p, CARRY, a & 0x80);
+        };
+            
+
+        
 
         //TODO: Table of CPU operations (where indices are opcodes):
         const std::vector<std::function<void()>> operations {
-               [&] () { 
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-                
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-                
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }, [&] () {
-
-            }
         };
 
         //Miscellanneous commonly used single-cycle lambdas:
@@ -572,6 +110,36 @@ class Cpu {
         const std::vector<std::vector<std::function<void()
                 >>> instrCycles {
             /*0: TODO: Interrupt timing */ {
+                [&] () {
+                    if (!(nmiPending || irqPending)) {
+                        static_cast<u8>(memory[pc++]);
+                    }
+                },
+                [&] () {
+                    push(pc >> 8);
+                    --sp;
+                },
+                [&] () {
+                    push(pc & 0x00FF);
+                    --sp;
+                },
+                [&] () {
+                    setBit(p, FROM_INSTRUCTION, !(nmiPending || irqPending));
+                    push(p);
+                    --sp;
+
+                    pollInterrupts();                    
+                },
+                [&] () {
+                    address = nmiPending ? 0xFFFA : 0xFFFE;
+                    pc = memory[address++];
+
+                    p |= 1 << INTERRUPT_DISABLE;
+                    nmiPending = false;
+                },
+                [&] () {
+                    pc |= memory[address] << 8;
+                }, 
             },
             /*1: RTI timing: */ {
                 dummyReadNextByte,
@@ -992,6 +560,7 @@ class Cpu {
             },
             /*27: Relative timing */ {
                 [&] () {
+                    defaultInterruptPoll = false;
                     address = toSigned(memory[pc++]);
                 },
                 [&] () {
@@ -1002,11 +571,17 @@ class Cpu {
                             //Skip PCH fixup:
                             ++instrCycle; 
                         }
+                        else {
+                            nmiPending |= nmiLevel;
+                            irqPending |= irqLevel 
+                                       && (p >> INTERRUPT_DISABLE & 0x01);
+                        }
                         pc += address;
                         return;
                     }
                     ++pc;
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
+                    defaultInterruptPoll = true;
                 },
                 [&] () {
                     //PCH fixup:
@@ -1015,6 +590,7 @@ class Cpu {
                 [&] () {
                     opcode = memory[pc++];
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
+                    defaultInterruptPoll = true;
                 },
             },
             /*28: Pre-indexed read timing */ {
@@ -1216,6 +792,12 @@ class Cpu {
         MappedMemory<> memory;
 
         void reset() {
+            defaultInterruptPoll = true;
+            nmiPending = false;
+            irqPending = false;
+            nmiLevel = false;
+            irqLevel = 0;
+
             sp -= 3; //dummy stack write
             p |= 0x04; //set interrupt disable 
             pc = readBytes<2, u16>(memory.begin() + 0xFFFC);
@@ -1228,12 +810,40 @@ class Cpu {
         void tick() {
             //Fetch next opcode if instruction has finished: 
             if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
-                opcode = memory[pc++];
+                opcode = (nmiPending || irqPending ? 0 : memory[pc++]);
                 instrCycle = instrCycles[instrTimings[opcode]].begin();
+
+                //TODO: Better solution for relative branching
+                if (instrCycle == instrCycles[27].begin()) {
+                    pollInterrupts();
+                }
+
                 return;
             }
+
             (*instrCycle)();
             ++instrCycle;
+
+            if (
+                    instrCycle == instrCycles[instrTimings[opcode]].end() - 1
+                 && defaultInterruptPoll) { 
+                pollInterrupts();
+            }
+        }
+
+        u8_fast connectIrq() {
+            assert(irqDevices < 32 
+                    && "Cannot allocate more than 32 IRQ devices.");
+            return irqDevices++;
+        }
+        void pullIrq(u8_fast bit) {
+            irqLevel |= 1 << bit;
+        }
+        void releaseIrq(u8_fast bit) {
+            irqLevel &= ~(1 << bit);
+        }
+        void edgeNmi() {
+            nmiLevel = true;
         }
 };
 
