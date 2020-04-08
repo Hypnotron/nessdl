@@ -29,7 +29,8 @@ class Cpu {
         //Per-instruction temporary registers:
         u8 opcode;
         u8 value;
-        u16 pointerAddress;
+        u8 pointerAddress;
+        u8 pointerAddressHigh;
         u16 address;
         std::vector<std::function<void()>>::const_iterator instrCycle;
 
@@ -739,7 +740,355 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*15: Absolute indexed read timing */ {
+            /*15: Absolute x-indexed read timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    address |= memory[pc++] << 8;
+                    if ((address & 0x00FF) + x <= 0xFF) {
+                        //Skip PCH fixup: 
+                        ++instrCycle; 
+                    }
+                    address += x;
+                },
+                //PCH fixup:
+                [&] () {
+                    value = memory[address - 0x0100];
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                }, 
+            },
+            /*16: Absolute y-indexed read timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    address |= memory[pc++] << 8;
+                    if ((address & 0x00FF) + y <= 0xFF) {
+                        //Skip PCH fixup: 
+                        ++instrCycle; 
+                    }
+                    address += y;
+                },
+                //PCH fixup:
+                [&] () {
+                    value = memory[address - 0x0100];
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                }, 
+            },
+            /*17: Absolute x-indexed read-modify-write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    address |= memory[pc++] << 8;
+                    if ((address & 0x00FF) + x <= 0xFF) {
+                        //Skip true PCH fixup: 
+                        ++instrCycle; 
+                    }
+                    address += x;
+                },
+                [&] () {
+                    //PCH fixup:
+                    value = memory[address - 0x0100];
+                    ++instrCycle;
+                },
+                [&] () {
+                    //Dummy PCH fixup:
+                    value = memory[address];
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value; 
+                },
+            },
+            /*18: Absolute y-indexed read-modify-write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    address |= memory[pc++] << 8;
+                    if ((address & 0x00FF) + y <= 0xFF) {
+                        //Skip true PCH fixup: 
+                        ++instrCycle; 
+                    }
+                    address += y;
+                },
+                [&] () {
+                    //PCH fixup:
+                    value = memory[address - 0x0100];
+                    ++instrCycle;
+                },
+                [&] () {
+                    //Dummy PCH fixup:
+                    value = memory[address];
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value; 
+                },
+            },
+            /*19: Absolute x-indexed write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    address |= memory[pc++] << 8;
+                    if ((address & 0x00FF) + x <= 0xFF) {
+                        //Skip PCH fixup: 
+                        ++instrCycle;
+                    }
+                    address += x;
+                },
+                [&] () {
+                    static_cast<u8>(memory[address - 0x0100]);
+                    ++instrCycle;
+                },
+                [&] () {
+                    static_cast<u8>(memory[address]);
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
+            /*20: Absolute y-indexed write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    address |= memory[pc++] << 8;
+                    if ((address & 0x00FF) + y <= 0xFF) {
+                        //Skip PCH fixup: 
+                        ++instrCycle;
+                    }
+                    address += y;
+                },
+                [&] () {
+                    static_cast<u8>(memory[address - 0x0100]);
+                    ++instrCycle;
+                },
+                [&] () {
+                    static_cast<u8>(memory[address]);
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
+            /*21: Relative timing */ {
+                [&] () {
+                    address = toSigned(memory[pc++]);
+                },
+                [&] () {
+                    doOp();
+                    opcode = memory[pc];
+                    if (value) {
+                        if ((pc & 0x00FF) + address <= 0xFF) {
+                            //Skip PCH fixup:
+                            ++instrCycle; 
+                        }
+                        pc += address;
+                        return;
+                    }
+                    ++pc;
+                    instrCycle = instrCycles[instrTimings[opcode]].begin();
+                },
+                [&] () {
+                    //PCH fixup:
+                    opcode = memory[pc - address];
+                },
+                [&] () {
+                    opcode = memory[pc++];
+                    instrCycle = instrCycles[instrTimings[opcode]].begin();
+                },
+            },
+            /*22: Pre-indexed read timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    static_cast<u8>(memory[pointerAddress]);
+                    pointerAddress += x;
+                },
+                [&] () {
+                    address = memory[pointerAddress++];
+                },
+                [&] () {
+                    address |= memory[pointerAddress] << 8;
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                },
+            },
+            /*23: Pre-indexed read-modify-write timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    static_cast<u8>(memory[pointerAddress]);
+                    pointerAddress += x;
+                },
+                [&] () {
+                    address = memory[pointerAddress++];
+                },
+                [&] () {
+                    address |= memory[pointerAddress] << 8;
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value;
+                },
+            },
+            /*24: Pre-indexed write timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    static_cast<u8>(memory[pointerAddress]);
+                    pointerAddress += x; 
+                },
+                [&] () {
+                    address = memory[pointerAddress++];
+                },
+                [&] () {
+                    address |= memory[pointerAddress] << 8;
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
+            /*25: Post-indexed read timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    address = memory[pointerAddress++];
+                },
+                [&] () {
+                    address |= memory[pointerAddress] << 8;
+                    if ((address & 0x00FF) + y <= 0xFF) {
+                        //Skip PCH fixup:
+                        ++instrCycle;
+                    }
+                    address += y;
+                },
+                [&] () {
+                    //PCH fixup:
+                    value = memory[address - 0x0100];
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                },
+            },
+            /*26: Post-indexed read-modify-write timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    address = memory[pointerAddress++]; 
+                },
+                [&] () {
+                    address |= memory[pointerAddress] << 8;
+                    if ((address & 0x00FF) + y <= 0xFF) {
+                        //Skip true PCH fixup:
+                        ++instrCycle;
+                    }
+                    address += y;
+                },
+                [&] () {
+                    //PCH fixup:
+                    value = memory[address - 0x0100];
+                    ++instrCycle;
+                },
+                [&] () {
+                    //Dummy PCH fixup:
+                    value = memory[address];
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value;
+                },
+            },
+            /*27: Post-indexed write timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    address = memory[pointerAddress++];
+                },
+                [&] () {
+                    address |= memory[pointerAddress] << 8;
+                    if ((address & 0x00FF) + y <= 0xFF) {
+                        //Skip PCH fixup:
+                        ++instrCycle;
+                    }
+                    address += y;
+                },
+                [&] () {
+                    //PCH fixup:
+                    static_cast<u8>(memory[address - 0x0100]);
+                    ++instrCycle;
+                },
+                [&] () {
+                    //Dummy PCH fixup:
+                    static_cast<u8>(memory[address]);
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            }, 
+            /*28: JMP indirect timing */ {
+                [&] () {
+                    pointerAddress = memory[pc++];
+                },
+                [&] () {
+                    pointerAddressHigh = memory[pc++];
+                },
+                [&] () {
+                    address = memory[
+                            pointerAddressHigh << 8 | pointerAddress++];
+                },
+                [&] () {
+                    pc = memory[
+                            pointerAddressHigh << 8 | pointerAddress 
+                            ] << 8 | address;
+                },
+            }
         };
 
         //TODO: Timings
@@ -763,9 +1112,7 @@ class Cpu {
         void tick() {
             //Fetch next opcode if instruction has finished: 
             if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
-                opcode = memory[pc];
-                ++pc;
-
+                opcode = memory[pc++];
                 instrCycle = instrCycles[instrTimings[opcode]].begin();
                 return;
             }

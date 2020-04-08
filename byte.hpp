@@ -54,3 +54,38 @@ void writeBytes(AddressType address, DataType data) {
         data = little ? data >> 8 : data << 8;
     }
 }
+
+s8 toSigned(u8 value) {
+    if (value <= INT8_MAX) {
+        return value;
+    }
+    else {
+        return static_cast<s8>(value - INT8_MIN) + INT8_MIN;
+    }
+}
+s16 toSigned(u16 value) {
+    if (value <= INT16_MAX) {
+        return value;
+    }
+    else {
+        return static_cast<s16>(value - INT16_MIN) + INT16_MIN;
+    }
+}
+s32 toSigned(u32 value) {
+    if (value <= INT32_MAX) {
+        return value;
+    }
+    else {
+        return static_cast<s32>(value - INT32_MIN) + INT32_MIN;
+    }
+}
+s64 toSigned(u64 value) {
+    if (value <= INT64_MAX) {
+        return value;
+    }
+    else {
+        return static_cast<s64>(value - INT64_MIN) + INT64_MIN;
+    }
+}
+
+
