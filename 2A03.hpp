@@ -740,7 +740,103 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*15: Absolute x-indexed read timing */ {
+            /*15: Zero page x-indexed read timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    value = memory[address];
+                    address += x;
+                    address &= 0xFF;
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                },
+            },
+            /*16: Zero page y-indexed read timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    value = memory[address];
+                    address += y;
+                    address &= 0xFF;
+                },
+                [&] () {
+                    value = memory[address];
+                    doOp();
+                },
+            },
+            /*17: Zero page x-indexed read-modify-write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    value = memory[address];
+                    address += x;
+                    address &= 0xFF;
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value;
+                },
+            },
+            /*18: Zero page y-indexed read-modify-write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    value = memory[address];
+                    address += y;
+                    address &= 0xFF;
+                },
+                [&] () {
+                    value = memory[address];
+                },
+                [&] () {
+                    memory[address] = value;
+                    doOp();
+                },
+                [&] () {
+                    memory[address] = value;
+                },
+            },
+            /*19: Zero page x-indexed write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    static_cast<u8>(memory[address]);
+                    address += x;
+                    address &= 0xFF;
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
+            /*20: Zero page y-indexed write timing */ {
+                [&] () {
+                    address = memory[pc++];
+                },
+                [&] () {
+                    static_cast<u8>(memory[address]);
+                    address += y;
+                    address &= 0xFF;
+                },
+                [&] () {
+                    doOp();
+                    memory[address] = value;
+                },
+            },
+            /*21: Absolute x-indexed read timing */ {
                 [&] () {
                     address = memory[pc++];
                 },
@@ -761,7 +857,7 @@ class Cpu {
                     doOp();
                 }, 
             },
-            /*16: Absolute y-indexed read timing */ {
+            /*22: Absolute y-indexed read timing */ {
                 [&] () {
                     address = memory[pc++];
                 },
@@ -782,7 +878,7 @@ class Cpu {
                     doOp();
                 }, 
             },
-            /*17: Absolute x-indexed read-modify-write timing */ {
+            /*23: Absolute x-indexed read-modify-write timing */ {
                 [&] () {
                     address = memory[pc++];
                 },
@@ -814,7 +910,7 @@ class Cpu {
                     memory[address] = value; 
                 },
             },
-            /*18: Absolute y-indexed read-modify-write timing */ {
+            /*24: Absolute y-indexed read-modify-write timing */ {
                 [&] () {
                     address = memory[pc++];
                 },
@@ -846,7 +942,7 @@ class Cpu {
                     memory[address] = value; 
                 },
             },
-            /*19: Absolute x-indexed write timing */ {
+            /*25: Absolute x-indexed write timing */ {
                 [&] () {
                     address = memory[pc++];
                 },
@@ -870,7 +966,7 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*20: Absolute y-indexed write timing */ {
+            /*26: Absolute y-indexed write timing */ {
                 [&] () {
                     address = memory[pc++];
                 },
@@ -894,7 +990,7 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*21: Relative timing */ {
+            /*27: Relative timing */ {
                 [&] () {
                     address = toSigned(memory[pc++]);
                 },
@@ -921,7 +1017,7 @@ class Cpu {
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                 },
             },
-            /*22: Pre-indexed read timing */ {
+            /*28: Pre-indexed read timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -940,7 +1036,7 @@ class Cpu {
                     doOp();
                 },
             },
-            /*23: Pre-indexed read-modify-write timing */ {
+            /*29: Pre-indexed read-modify-write timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -965,7 +1061,7 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*24: Pre-indexed write timing */ {
+            /*30: Pre-indexed write timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -984,7 +1080,7 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*25: Post-indexed read timing */ {
+            /*31: Post-indexed read timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -1008,7 +1104,7 @@ class Cpu {
                     doOp();
                 },
             },
-            /*26: Post-indexed read-modify-write timing */ {
+            /*32: Post-indexed read-modify-write timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -1043,7 +1139,7 @@ class Cpu {
                     memory[address] = value;
                 },
             },
-            /*27: Post-indexed write timing */ {
+            /*33: Post-indexed write timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -1072,7 +1168,7 @@ class Cpu {
                     memory[address] = value;
                 },
             }, 
-            /*28: JMP indirect timing */ {
+            /*34: JMP indirect timing */ {
                 [&] () {
                     pointerAddress = memory[pc++];
                 },
@@ -1088,11 +1184,17 @@ class Cpu {
                             pointerAddressHigh << 8 | pointerAddress 
                             ] << 8 | address;
                 },
-            }
+            },
+            /*35: NOP timing */ {
+            },
         };
 
         //TODO: Timings
-        const std::vector<u8_fast> instrTimings {};
+        const std::vector<u8_fast> instrTimings {
+        //      .0, .1, .2, .3, .4, .5, .6, .7, .8, .9, .A, .B, .C, .D, .E, .F, 
+        /*0*/    0, 28, 35, 29, 12, 12, 13, 13,  3,  7,  6,  7,  9,  9, 10, 10, 
+        /*1*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,  
+        };
 
 
     public:
@@ -1119,6 +1221,5 @@ class Cpu {
             (*instrCycle)();
             ++instrCycle;
         }
-
 };
 
