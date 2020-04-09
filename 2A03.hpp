@@ -33,7 +33,10 @@ class Cpu {
         u8 pointerAddress;
         u8 pointerAddressHigh;
         u16 address;
+        s8 offset;
         std::vector<std::function<void()>>::const_iterator instrCycle;
+        //Value by which instrCycle should be incremented each cycle:
+        u8_fast instrCycleStep;
 
         //Interrupt fields:
         //IRQ level (where > 0 is low):
@@ -58,7 +61,7 @@ class Cpu {
         inline void pollInterrupts() {
             nmiPending = nmiLevel;
             nmiLevel = false;
-            irqPending = irqLevel && ~(p >> INTERRUPT_DISABLE & 0x01);
+            irqPending = irqLevel && !(p >> INTERRUPT_DISABLE & 0x01);
         }
 
         //CPU mnemonic operations:
@@ -85,8 +88,7 @@ class Cpu {
             setBit(p, NEGATIVE, value & 0x80);
         };
         const std::function<void()> PHP = [&] () {
-            p |= 1 << FROM_INSTRUCTION;
-            push(p); 
+            push(p | 1 << FROM_INSTRUCTION); 
         };
         const std::function<void()> ANC = [&] () {
             a &= value;
@@ -94,7 +96,7 @@ class Cpu {
             setBit(p, NEGATIVE, a & 0x80);
         };
         const std::function<void()> BPL = [&] () {
-            value = ~(p >> NEGATIVE & 0x01);
+            value = !(p >> NEGATIVE & 0x01);
         };
         const std::function<void()> CLC = [&] () {
             p &= ~(1 << CARRY);
@@ -110,10 +112,9 @@ class Cpu {
             AND();
         };
         const std::function<void()> BIT = [&] () {
-            u8 tmp = value & a;
-            setBit(p, ZERO, tmp == 0);
-            setBit(p, OVERFLOW, tmp & 0x40);
-            setBit(p, NEGATIVE, tmp & 0x80);
+            setBit(p, ZERO, (a & value) == 0);
+            setBit(p, OVERFLOW, value & 0x40);
+            setBit(p, NEGATIVE, value & 0x80);
         };
         const std::function<void()> ROL = [&] () {
             u8_fast oldCarry {static_cast<u8_fast>(p >> CARRY & 0x01)};
@@ -125,7 +126,7 @@ class Cpu {
             setBit(p, NEGATIVE, value & 0x80);
         };
         const std::function<void()> PLP = [&] () {
-            p = pull();
+            p = (pull() & 0xEF) | 0x20;
         };
         const std::function<void()> BMI = [&] () {
             value = p >> NEGATIVE & 0x01;
@@ -160,7 +161,7 @@ class Cpu {
             a = value;
         };
         const std::function<void()> BVC = [&] () {
-            value = ~(p >> OVERFLOW & 0x01);
+            value = !(p >> OVERFLOW & 0x01);
         };
         const std::function<void()> CLI = [&] () {
             p &= ~(1 << INTERRUPT_DISABLE);
@@ -181,6 +182,8 @@ class Cpu {
         };
         const std::function<void()> PLA = [&] () {
             a = pull();
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
         }; 
         const std::function<void()> ARR = [&] () {
             AND();
@@ -199,13 +202,8 @@ class Cpu {
         const std::function<void()> STA = [&] () {
             value = a;
         };
-        const std::function<void()> AXS = [&] () {
-            value = a & x;
-        };
         const std::function<void()> SAX = [&] () {
-            u8_fast tmp = a;
-            a = x;
-            x = tmp;
+            value = a & x;
         };
         const std::function<void()> STY = [&] () {
             value = y;
@@ -222,9 +220,11 @@ class Cpu {
         };
         const std::function<void()> TXA = [&] () {
             value = a = x;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
         };
         const std::function<void()> BCC = [&] () {
-            value = ~(p >> CARRY & 0x01);
+            value = !(p >> CARRY & 0x01);
         };
         const std::function<void()> TYA = [&] () {
             value = a = y;
@@ -287,19 +287,19 @@ class Cpu {
             setBit(p, NEGATIVE, a & 0x80);
         }; 
         const std::function<void()> CPY = [&] () {
-            u8_fast tmp = y - value;
+            u8 tmp = y - value;
             setBit(p, CARRY, y >= value);
             setBit(p, ZERO, tmp == 0); 
             setBit(p, NEGATIVE, tmp & 0x80); 
         }; 
         const std::function<void()> CPX = [&] () {
-            u8_fast tmp = x - value;
+            u8 tmp = x - value;
             setBit(p, CARRY, x >= value);
             setBit(p, ZERO, tmp == 0);
             setBit(p, NEGATIVE, tmp & 0x80); 
         }; 
         const std::function<void()> CMP = [&] () {
-            u8_fast tmp = a - value;
+            u8 tmp = a - value;
             setBit(p, CARRY, a >= value);
             setBit(p, ZERO, tmp == 0);
             setBit(p, NEGATIVE, tmp & 0x80); 
@@ -356,16 +356,25 @@ class Cpu {
             ADC();
         };
         const std::function<void()> BNE = [&] () {
-            value = ~(p >> ZERO & 0x01);
+            value = !(p >> ZERO & 0x01);
         }; 
         const std::function<void()> BEQ = [&] () {
             value = p >> ZERO & 0x01;
         };
-        //TODO: ADC
+        const std::function<void()> SBX = [&] () {
+            x &= a;
+            setBit(p, CARRY, x >= value);
+            x -= value;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
+        };
         const std::function<void()> ADC = [&] () {
-
-
-
+            u16 tmp = a + value + (p >> CARRY & 0x01);
+            setBit(p, CARRY, tmp > 0xFF);
+            setBit(p, ZERO, (tmp & 0xFF) == 0);
+            setBit(p, OVERFLOW, (a ^ tmp) & (value ^ tmp) & 0x80); 
+            setBit(p, NEGATIVE, tmp & 0x80);
+            a = tmp;
         };
             
             
@@ -395,7 +404,7 @@ class Cpu {
         /*B*/   BCS, LDA, NUL, LAX, LDY, LDA, LDX, LAX,
                 CLV, LDA, TSX, LAS, LDY, LDA, LDX, LAX,
         /*C*/   CPY, CMP, NOP, DCP, CPY, CMP, DEC, DCP,
-                INY, CMP, DEX, AXS, CPY, CMP, DEC, DCP,
+                INY, CMP, DEX, SBX, CPY, CMP, DEC, DCP,
         /*D*/   BNE, CMP, NUL, DCP, NOP, CMP, DEC, DCP,
                 CLD, CMP, NOP, DCP, NOP, CMP, DEC, DCP,
         /*E*/   CPX, SBC, NOP, ISC, CPX, SBC, INC, ISC,
@@ -430,8 +439,7 @@ class Cpu {
                     --sp;
                 },
                 [&] () {
-                    setBit(p, FROM_INSTRUCTION, !(nmiPending || irqPending));
-                    push(p);
+                    push(p | !(nmiPending || irqPending) << FROM_INSTRUCTION);
                     --sp;
 
                     pollInterrupts();                    
@@ -456,7 +464,7 @@ class Cpu {
                     ++sp;
                 },
                 [&] () {
-                    p = pull(); 
+                    p = (pull() & 0xEF) | 0x20; 
                     ++sp;
                 },
                 [&] () {
@@ -721,7 +729,7 @@ class Cpu {
                     address |= memory[pc++] << 8;
                     if ((address & 0x00FF) + x <= 0xFF) {
                         //Skip PCH fixup: 
-                        ++instrCycle; 
+                        instrCycleStep = 2; 
                     }
                     address += x;
                 },
@@ -742,7 +750,7 @@ class Cpu {
                     address |= memory[pc++] << 8;
                     if ((address & 0x00FF) + y <= 0xFF) {
                         //Skip PCH fixup: 
-                        ++instrCycle; 
+                        instrCycleStep = 2; 
                     }
                     address += y;
                 },
@@ -763,14 +771,14 @@ class Cpu {
                     address |= memory[pc++] << 8;
                     if ((address & 0x00FF) + x <= 0xFF) {
                         //Skip true PCH fixup: 
-                        ++instrCycle; 
+                        instrCycleStep = 2; 
                     }
                     address += x;
                 },
                 [&] () {
                     //PCH fixup:
                     value = memory[address - 0x0100];
-                    ++instrCycle;
+                    instrCycleStep = 2;
                 },
                 [&] () {
                     //Dummy PCH fixup:
@@ -795,14 +803,14 @@ class Cpu {
                     address |= memory[pc++] << 8;
                     if ((address & 0x00FF) + y <= 0xFF) {
                         //Skip true PCH fixup: 
-                        ++instrCycle; 
+                        instrCycleStep = 2; 
                     }
                     address += y;
                 },
                 [&] () {
                     //PCH fixup:
                     value = memory[address - 0x0100];
-                    ++instrCycle;
+                    instrCycleStep = 2;
                 },
                 [&] () {
                     //Dummy PCH fixup:
@@ -827,13 +835,13 @@ class Cpu {
                     address |= memory[pc++] << 8;
                     if ((address & 0x00FF) + x <= 0xFF) {
                         //Skip PCH fixup: 
-                        ++instrCycle;
+                        instrCycleStep = 2;
                     }
                     address += x;
                 },
                 [&] () {
                     static_cast<u8>(memory[address - 0x0100]);
-                    ++instrCycle;
+                    instrCycleStep = 2;
                 },
                 [&] () {
                     static_cast<u8>(memory[address]);
@@ -851,13 +859,13 @@ class Cpu {
                     address |= memory[pc++] << 8;
                     if ((address & 0x00FF) + y <= 0xFF) {
                         //Skip PCH fixup: 
-                        ++instrCycle;
+                        instrCycleStep = 2;
                     }
                     address += y;
                 },
                 [&] () {
                     static_cast<u8>(memory[address - 0x0100]);
-                    ++instrCycle;
+                    instrCycleStep = 2;
                 },
                 [&] () {
                     static_cast<u8>(memory[address]);
@@ -870,35 +878,43 @@ class Cpu {
             /*27: Relative timing */ {
                 [&] () {
                     defaultInterruptPoll = false;
-                    address = toSigned(memory[pc++]);
+                    offset = toSigned(memory[pc++]);
                 },
                 [&] () {
                     doOp();
                     opcode = memory[pc];
                     if (value) {
-                        if ((pc & 0x00FF) + address <= 0xFF) {
+                        if (
+                                (pc & 0x00FF) + offset <= 0xFFu 
+                             && (pc & 0x00FF) + offset >= 0) {
                             //Skip PCH fixup:
-                            ++instrCycle; 
+                            instrCycleStep = 2; 
                         }
                         else {
                             nmiPending |= nmiLevel;
                             irqPending |= irqLevel 
                                        && (p >> INTERRUPT_DISABLE & 0x01);
                         }
-                        pc += address;
+                        pc += offset;
                         return;
                     }
                     ++pc;
+                    //TODO: remove
+                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
+                    instrCycleStep = 0;
                     defaultInterruptPoll = true;
                 },
                 [&] () {
                     //PCH fixup:
-                    opcode = memory[pc - address];
+                    opcode = memory[pc - offset];
                 },
                 [&] () {
                     opcode = memory[pc++];
+                    //TODO: remove
+                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
+                    instrCycleStep = 0;
                     defaultInterruptPoll = true;
                 },
             },
@@ -976,7 +992,7 @@ class Cpu {
                     address |= memory[pointerAddress] << 8;
                     if ((address & 0x00FF) + y <= 0xFF) {
                         //Skip PCH fixup:
-                        ++instrCycle;
+                        instrCycleStep = 2;
                     }
                     address += y;
                 },
@@ -1000,14 +1016,14 @@ class Cpu {
                     address |= memory[pointerAddress] << 8;
                     if ((address & 0x00FF) + y <= 0xFF) {
                         //Skip true PCH fixup:
-                        ++instrCycle;
+                        instrCycleStep = 2;
                     }
                     address += y;
                 },
                 [&] () {
                     //PCH fixup:
                     value = memory[address - 0x0100];
-                    ++instrCycle;
+                    instrCycleStep = 2;
                 },
                 [&] () {
                     //Dummy PCH fixup:
@@ -1035,14 +1051,14 @@ class Cpu {
                     address |= memory[pointerAddress] << 8;
                     if ((address & 0x00FF) + y <= 0xFF) {
                         //Skip PCH fixup:
-                        ++instrCycle;
+                        instrCycleStep = 2;
                     }
                     address += y;
                 },
                 [&] () {
                     //PCH fixup:
                     static_cast<u8>(memory[address - 0x0100]);
-                    ++instrCycle;
+                    instrCycleStep = 2;
                 },
                 [&] () {
                     //Dummy PCH fixup:
@@ -1088,7 +1104,7 @@ class Cpu {
         /*9*/   27, 33, 35, 35, 19, 19, 20, 20,  6, 26,  6, 35, 35, 25, 35, 35,
         /*A*/    7, 28,  7, 28, 12, 12, 12, 12,  6,  7,  6,  7,  9,  9,  9,  9,
         /*B*/   27, 31, 35, 31, 15, 15, 16, 16,  6, 22,  6, 22, 21, 21, 22, 22,
-        /*C*/    7, 28,  7, 29, 12, 12, 13, 13,  6,  7,  6,  7,  9,  9,  9,  9,
+        /*C*/    7, 28,  7, 29, 12, 12, 13, 13,  6,  7,  6,  7,  9,  9, 10, 10,
         /*D*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,
         /*E*/    7, 28,  7, 29, 12, 12, 13, 13,  6,  7,  6,  7,  9,  9, 10, 10,
         /*F*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,
@@ -1098,6 +1114,11 @@ class Cpu {
     public:
         //Memory:
         MappedMemory<> memory;
+
+        //TODO: remove
+        Cpu()
+              : memory(0xFFFF) {
+        }
 
         void reset() {
             defaultInterruptPoll = true;
@@ -1113,12 +1134,19 @@ class Cpu {
             //Invalidate the next cycle iterator so 
             //that an opcode fetch occurs next tick:
             instrCycle = instrCycles[instrTimings[opcode]].end();
+            instrCycleStep = 1;
+            
+            //TODO: remove 
+            debug::log << std::hex;
         } 
 
         void tick() {
+
             //Fetch next opcode if instruction has finished: 
             if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
                 opcode = (nmiPending || irqPending ? 0 : memory[pc++]);
+                //TODO: remove
+                debugOutput();
                 instrCycle = instrCycles[instrTimings[opcode]].begin();
 
                 //TODO: Better solution for relative branching
@@ -1130,7 +1158,8 @@ class Cpu {
             }
 
             (*instrCycle)();
-            ++instrCycle;
+            instrCycle += instrCycleStep;
+            instrCycleStep = 1;
 
             if (
                     instrCycle == instrCycles[instrTimings[opcode]].end() - 1
@@ -1138,6 +1167,7 @@ class Cpu {
                 pollInterrupts();
             }
         }
+
 
         u8_fast connectIrq() {
             assert(irqDevices < 32 
@@ -1153,5 +1183,19 @@ class Cpu {
         void edgeNmi() {
             nmiLevel = true;
         }
+
+        //TODO: remove 
+        void debugOutput() {
+            debug::log << "PC: " << static_cast<int>(pc) << "  ";
+            debug::log << "OP: " << static_cast<int>(opcode) << "  ";
+            debug::log << "VAL: " << static_cast<int>(value) << "  ";
+            debug::log << "ADDR: " << address << "  "; 
+            debug::log << "A: " << static_cast<int>(a) << "  ";
+            debug::log << "X: " << static_cast<int>(x) << "  ";
+            debug::log << "Y: " << static_cast<int>(y) << "  ";
+            debug::log << "P: " << static_cast<int>(p) << "  ";
+            debug::log << "SP: " << static_cast<int>(sp) << "  \n";
+        }
+
 };
 

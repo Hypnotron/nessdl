@@ -1,6 +1,6 @@
 TARGET = $(wildcard *.cpp)
 
-CPPFLAGS += -std=c++11 -Wno-unused-value 
+CPPFLAGS += -std=c++11 -Wno-unused-value -DBUILD_DEBUG 
 LDFLAGS = 
 
 LINUX_CC = clang++
