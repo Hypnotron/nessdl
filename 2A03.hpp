@@ -38,7 +38,8 @@ class Cpu {
         //Interrupt fields:
         //IRQ level (where > 0 is low):
         u32 irqLevel; 
-        u8_fast irqDevices;
+        //Number of connected IRQ devices:
+        u8_fast irqDevices {0};
         //NMI level (where true means edge):
         bool nmiLevel; 
         //Interrupt status (updated before final cycle or manually):
@@ -47,7 +48,7 @@ class Cpu {
         //Toggles default interrupt polling behavior (before final cycle):
         bool defaultInterruptPoll; 
 
-        //TODO: General CPU operations (not bound to a specific cycle):
+        //General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
             return memory[0x0100 + sp];
         };
@@ -60,7 +61,7 @@ class Cpu {
             irqPending = irqLevel && ~(p >> INTERRUPT_DISABLE & 0x01);
         }
 
-        //TODO: CPU mnemonic operations:
+        //CPU mnemonic operations:
         const std::function<void()> NUL = [&] () {};
         const std::function<void()> NOP = [&] () {
             value = a; 
@@ -165,12 +166,6 @@ class Cpu {
             p &= ~(1 << INTERRUPT_DISABLE);
             value = a;
         };
-        //TODO: ADC
-        const std::function<void()> ADC = [&] () {
-
-
-
-        };
         const std::function<void()> ROR = [&] () {
             u8_fast oldCarry {static_cast<u8_fast>(p >> CARRY & 0x01)};
             setBit(p, CARRY, value & 0x01);
@@ -204,8 +199,13 @@ class Cpu {
         const std::function<void()> STA = [&] () {
             value = a;
         };
-        const std::function<void()> SAX = [&] () {
+        const std::function<void()> AXS = [&] () {
             value = a & x;
+        };
+        const std::function<void()> SAX = [&] () {
+            u8_fast tmp = a;
+            a = x;
+            x = tmp;
         };
         const std::function<void()> STY = [&] () {
             value = y;
@@ -267,47 +267,141 @@ class Cpu {
 
             value = a;
         };
-            
-            
+        const std::function<void()> BCS = [&] () {
+            value = p >> CARRY & 0x01;
+        };
+        const std::function<void()> CLV = [&] () {
+            p &= ~(1 << OVERFLOW);
+            value = a;
+        };
+        const std::function<void()> TSX = [&] () {
+            x = sp;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
 
-            
+            value = a;
+        };
+        const std::function<void()> LAS = [&] () {
+            a = x = (sp &= value);
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        }; 
+        const std::function<void()> CPY = [&] () {
+            u8_fast tmp = y - value;
+            setBit(p, CARRY, y >= value);
+            setBit(p, ZERO, tmp == 0); 
+            setBit(p, NEGATIVE, tmp & 0x80); 
+        }; 
+        const std::function<void()> CPX = [&] () {
+            u8_fast tmp = x - value;
+            setBit(p, CARRY, x >= value);
+            setBit(p, ZERO, tmp == 0);
+            setBit(p, NEGATIVE, tmp & 0x80); 
+        }; 
+        const std::function<void()> CMP = [&] () {
+            u8_fast tmp = a - value;
+            setBit(p, CARRY, a >= value);
+            setBit(p, ZERO, tmp == 0);
+            setBit(p, NEGATIVE, tmp & 0x80); 
+        };
+        const std::function<void()> INY = [&] () {
+            ++y;
+            setBit(p, ZERO, y == 0);
+            setBit(p, NEGATIVE, y & 0x80);
         
+            value = a;
+        };
+        const std::function<void()> INX = [&] () {
+            ++x;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
+        
+            value = a;
+        };
+        const std::function<void()> CLD = [&] () {
+            p &= ~(1 << DECIMAL);
+            value = a;
+        };
+        const std::function<void()> SED = [&] () {
+            p |= 1 << DECIMAL;
+            value = a;
+        };
+        const std::function<void()> DEX = [&] () {
+            --x;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
 
-        //TODO: Table of CPU operations (where indices are opcodes):
+            value = a;
+        };
+        const std::function<void()> DCP = [&] () {
+            --value;
+            CMP();
+        };
+        const std::function<void()> DEC = [&] () {
+            --value;
+            setBit(p, ZERO, value == 0);
+            setBit(p, NEGATIVE, value & 0x80);
+        };
+        const std::function<void()> INC = [&] () {
+            ++value;
+            setBit(p, ZERO, value == 0);
+            setBit(p, NEGATIVE, value & 0x80);
+        };
+        const std::function<void()> ISC = [&] () {
+            ++value;
+            SBC();
+        };
+        const std::function<void()> SBC = [&] () {
+            value = ~value;
+            ADC();
+        };
+        const std::function<void()> BNE = [&] () {
+            value = ~(p >> ZERO & 0x01);
+        }; 
+        const std::function<void()> BEQ = [&] () {
+            value = p >> ZERO & 0x01;
+        };
+        //TODO: ADC
+        const std::function<void()> ADC = [&] () {
+
+
+
+        };
+            
+            
         const std::vector<std::function<void()>> operations {
         /*0*/   NUL, ORA, NUL, SLO, NOP, ORA, ASL, SLO,
                 PHP, ORA, ASL, ANC, NOP, ORA, ASL, SLO,
-
         /*1*/   BPL, ORA, NUL, SLO, NOP, ORA, ASL, SLO,
                 CLC, ORA, NOP, SLO, NOP, ORA, ASL, SLO,
-
         /*2*/   NUL, AND, NUL, RLA, BIT, AND, ROL, RLA,
                 PLP, AND, ROL, ANC, BIT, AND, ROL, RLA, 
-
         /*3*/   BMI, AND, NUL, RLA, NOP, AND, ROL, RLA,
                 SEC, AND, NOP, RLA, NOP, AND, ROL, RLA, 
-    
         /*4*/   NUL, EOR, NUL, SRE, NOP, EOR, LSR, SRE,
                 PHA, EOR, LSR, ALR, NUL, EOR, LSR, SRE,  
-                 
         /*5*/   BVC, EOR, NUL, SRE, NOP, EOR, LSR, SRE,
                 CLI, EOR, NOP, SRE, NOP, EOR, LSR, SRE,
-        
         /*6*/   NUL, ADC, NUL, RRA, NOP, ADC, ROR, RRA,
                 PLA, ADC, ROR, ARR, NUL, ADC, ROR, RRA,
-    
         /*7*/   BVS, ADC, NUL, RRA, NOP, ADC, ROR, RRA,
                 SEI, ADC, NOP, RRA, NOP, ADC, ROR, RRA,
-
         /*8*/   NOP, STA, NOP, SAX, STY, STA, STX, SAX,
                 DEY, NOP, TXA, NUL, STY, STA, STX, SAX,
-
         /*9*/   BCC, STA, NUL, NUL, STY, STA, STX, SAX,
                 TYA, STA, TXS, NUL, NUL, STA, NUL, NUL, 
-        
         /*A*/   LDY, LDA, LDX, LAX, LDY, LDA, LDX, LAX,
                 TAY, LDA, TAX, LAX, LDY, LDA, LDX, LAX,
-         
+        /*B*/   BCS, LDA, NUL, LAX, LDY, LDA, LDX, LAX,
+                CLV, LDA, TSX, LAS, LDY, LDA, LDX, LAX,
+        /*C*/   CPY, CMP, NOP, DCP, CPY, CMP, DEC, DCP,
+                INY, CMP, DEX, AXS, CPY, CMP, DEC, DCP,
+        /*D*/   BNE, CMP, NUL, DCP, NOP, CMP, DEC, DCP,
+                CLD, CMP, NOP, DCP, NOP, CMP, DEC, DCP,
+        /*E*/   CPX, SBC, NOP, ISC, CPX, SBC, INC, ISC,
+                INX, SBC, NOP, SBC, CPX, SBC, INC, ISC,
+        /*F*/   BEQ, SBC, NUL, ISC, NOP, SBC, INC, ISC,
+                SED, SBC, NOP, ISC, NOP, SBC, INC, ISC, 
         };
 
         //Miscellanneous commonly used single-cycle lambdas:
@@ -319,7 +413,6 @@ class Cpu {
             operations[opcode]();
         };
 
-        //TODO: Individual cycle breakdown for each instruction:
         const std::vector<std::vector<std::function<void()
                 >>> instrCycles {
             /*0: Interrupt timing */ {
@@ -981,7 +1074,6 @@ class Cpu {
             },
         };
 
-        //TODO: Timings
         const std::vector<u8_fast> instrTimings {
         //      .0, .1, .2, .3, .4, .5, .6, .7, .8, .9, .A, .B, .C, .D, .E, .F, 
         /*0*/    0, 28, 35, 29, 12, 12, 13, 13,  3,  7,  6,  7,  9,  9, 10, 10, 
