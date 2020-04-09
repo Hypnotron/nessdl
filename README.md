@@ -11,9 +11,9 @@ Releases will be made available at some point in time for:
 # Compiling on Linux (currently broken)
 ##### Prerequisites
 + clang
-+ SDL2
-`mkdir -p build/Nessdl.app/Contents/MacOS`
-`make linux`, `make windows`, or `make macos` 
++ SDL2    
+`mkdir -p build/Nessdl.app/Contents/MacOS`    
+`make linux`, `make windows`, or `make macos`     
 
 # Documents
 + [Nesdev Wiki](http://wiki.nesdev.com/w/index.php/Nesdev_Wiki)
