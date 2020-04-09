@@ -1,0 +1,4 @@
+#Tue Apr 07 14:11:33 EDT 2020
+base.0=/home/main/src/nessdl/build/android/app/build/intermediates/transforms/dexMerger/debug/0
+path.0=classes.dex
+renamed.0=classes.dex
