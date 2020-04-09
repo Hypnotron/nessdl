@@ -1,3 +1,5 @@
 *.cxx
 *.hxx
 build/
+docs/
+test/

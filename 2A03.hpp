@@ -354,6 +354,7 @@ class Cpu {
         const std::function<void()> SBC = [&] () {
             value = ~value;
             ADC();
+            value = ~value;
         };
         const std::function<void()> BNE = [&] () {
             value = !(p >> ZERO & 0x01);
@@ -899,8 +900,6 @@ class Cpu {
                         return;
                     }
                     ++pc;
-                    //TODO: remove
-                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     defaultInterruptPoll = true;
@@ -911,8 +910,6 @@ class Cpu {
                 },
                 [&] () {
                     opcode = memory[pc++];
-                    //TODO: remove
-                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     defaultInterruptPoll = true;
@@ -1115,11 +1112,6 @@ class Cpu {
         //Memory:
         MappedMemory<> memory;
 
-        //TODO: remove
-        Cpu()
-              : memory(0xFFFF) {
-        }
-
         void reset() {
             defaultInterruptPoll = true;
             nmiPending = false;
@@ -1135,9 +1127,6 @@ class Cpu {
             //that an opcode fetch occurs next tick:
             instrCycle = instrCycles[instrTimings[opcode]].end();
             instrCycleStep = 1;
-            
-            //TODO: remove 
-            debug::log << std::hex;
         } 
 
         void tick() {
@@ -1145,8 +1134,6 @@ class Cpu {
             //Fetch next opcode if instruction has finished: 
             if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
                 opcode = (nmiPending || irqPending ? 0 : memory[pc++]);
-                //TODO: remove
-                debugOutput();
                 instrCycle = instrCycles[instrTimings[opcode]].begin();
 
                 //TODO: Better solution for relative branching
