@@ -100,6 +100,15 @@ class Cpu {
         };
         const std::function<void()> CLC = [&] () {
             p &= ~(1 << CARRY);
+
+            //Due to the existence of immediate (accumulator) 
+            //versions of operations that typically operate 
+            //on value, a is loaded with value after the
+            //completion of said operations to avoid
+            //rewriting them entirely. Because of this,
+            //all immediate operations must store whatever
+            //a is to be loaded with into value in order
+            //to avoid clobbering a's previous value.
             value = a;
         };
         const std::function<void()> AND = [&] () {
