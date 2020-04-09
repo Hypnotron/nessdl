@@ -909,6 +909,8 @@ class Cpu {
                         return;
                     }
                     ++pc;
+                    //TODO: remove
+                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     defaultInterruptPoll = true;
@@ -919,6 +921,8 @@ class Cpu {
                 },
                 [&] () {
                     opcode = memory[pc++];
+                    //TODO: remove
+                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     defaultInterruptPoll = true;
@@ -1121,6 +1125,11 @@ class Cpu {
         //Memory:
         MappedMemory<> memory;
 
+        //TODO: remove
+        Cpu()
+              : memory(0xFFFF) {
+        }
+
         void reset() {
             defaultInterruptPoll = true;
             nmiPending = false;
@@ -1136,6 +1145,9 @@ class Cpu {
             //that an opcode fetch occurs next tick:
             instrCycle = instrCycles[instrTimings[opcode]].end();
             instrCycleStep = 1;
+
+            //TODO: remove
+            debug::log << std::hex; 
         } 
 
         void tick() {
@@ -1143,6 +1155,8 @@ class Cpu {
             //Fetch next opcode if instruction has finished: 
             if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
                 opcode = (nmiPending || irqPending ? 0 : memory[pc++]);
+                //TODO: remove
+                debugOutput();
                 instrCycle = instrCycles[instrTimings[opcode]].begin();
 
                 //TODO: Better solution for relative branching
@@ -1182,15 +1196,15 @@ class Cpu {
 
         //TODO: remove 
         void debugOutput() {
-            debug::log << "PC: " << static_cast<int>(pc) << "  ";
-            debug::log << "OP: " << static_cast<int>(opcode) << "  ";
+            debug::log << std::setfill('0') << std::setw(4) << pc << "\n";
+            /*debug::log << "OP: " << static_cast<int>(opcode) << "  ";
             debug::log << "VAL: " << static_cast<int>(value) << "  ";
             debug::log << "ADDR: " << address << "  "; 
             debug::log << "A: " << static_cast<int>(a) << "  ";
             debug::log << "X: " << static_cast<int>(x) << "  ";
             debug::log << "Y: " << static_cast<int>(y) << "  ";
             debug::log << "P: " << static_cast<int>(p) << "  ";
-            debug::log << "SP: " << static_cast<int>(sp) << "  \n";
+            debug::log << "SP: " << static_cast<int>(sp) << "  \n";*/
         }
 
 };
