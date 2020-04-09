@@ -60,8 +60,11 @@ class Cpu {
             irqPending = irqLevel && ~(p >> INTERRUPT_DISABLE & 0x01);
         }
 
-        //TODO: Specialized CPU operations:
-        const std::function<void()> NOP = [&] () {};
+        //TODO: CPU mnemonic operations:
+        const std::function<void()> NUL = [&] () {};
+        const std::function<void()> NOP = [&] () {
+            value = a; 
+        }; 
         const std::function<void()> ORA = [&] () {
             a |= value;
             setBit(p, ZERO, a == 0);
@@ -81,20 +84,230 @@ class Cpu {
             setBit(p, NEGATIVE, value & 0x80);
         };
         const std::function<void()> PHP = [&] () {
-            setBit(p, FROM_INSTRUCTION, 1);
+            p |= 1 << FROM_INSTRUCTION;
             push(p); 
         };
         const std::function<void()> ANC = [&] () {
             a &= value;
-            setBit(p, NEGATIVE, a & 0x80);
             setBit(p, CARRY, a & 0x80);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> BPL = [&] () {
+            value = ~(p >> NEGATIVE & 0x01);
+        };
+        const std::function<void()> CLC = [&] () {
+            p &= ~(1 << CARRY);
+            value = a;
+        };
+        const std::function<void()> AND = [&] () {
+            a &= value;
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> RLA = [&] () {
+            ROL();
+            AND();
+        };
+        const std::function<void()> BIT = [&] () {
+            u8 tmp = value & a;
+            setBit(p, ZERO, tmp == 0);
+            setBit(p, OVERFLOW, tmp & 0x40);
+            setBit(p, NEGATIVE, tmp & 0x80);
+        };
+        const std::function<void()> ROL = [&] () {
+            u8_fast oldCarry {static_cast<u8_fast>(p >> CARRY & 0x01)};
+            setBit(p, CARRY, value & 0x80);
+            value <<= 1;
+            setBit(value, 0, oldCarry);
+
+            setBit(p, ZERO, value == 0);
+            setBit(p, NEGATIVE, value & 0x80);
+        };
+        const std::function<void()> PLP = [&] () {
+            p = pull();
+        };
+        const std::function<void()> BMI = [&] () {
+            value = p >> NEGATIVE & 0x01;
+        };
+        const std::function<void()> SEC = [&] () {
+            p |= 1 << CARRY;
+            value = a;
+        };
+        const std::function<void()> EOR = [&] () {
+            a ^= value;
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> SRE = [&] () {
+            LSR();
+            EOR();
+        };
+        const std::function<void()> LSR = [&] () {
+            setBit(p, CARRY, value & 0x01);
+            value >>= 1;
+            setBit(p, ZERO, value == 0);
+            setBit(p, NEGATIVE, value & 0x80);
+        };
+        const std::function<void()> PHA = [&] () {
+            push(a);
+        };
+        const std::function<void()> ALR = [&] () {
+            a &= value;
+            
+            value = a;
+            LSR();
+            a = value;
+        };
+        const std::function<void()> BVC = [&] () {
+            value = ~(p >> OVERFLOW & 0x01);
+        };
+        const std::function<void()> CLI = [&] () {
+            p &= ~(1 << INTERRUPT_DISABLE);
+            value = a;
+        };
+        //TODO: ADC
+        const std::function<void()> ADC = [&] () {
+
+
+
+        };
+        const std::function<void()> ROR = [&] () {
+            u8_fast oldCarry {static_cast<u8_fast>(p >> CARRY & 0x01)};
+            setBit(p, CARRY, value & 0x01);
+            value >>= 1;
+            setBit(value, 7, oldCarry);
+    
+            setBit(p, ZERO, value == 0);
+            setBit(p, NEGATIVE, value & 0x80);
+        };
+        const std::function<void()> RRA = [&] () {
+            ROR();
+            ADC();
+        };
+        const std::function<void()> PLA = [&] () {
+            a = pull();
+        }; 
+        const std::function<void()> ARR = [&] () {
+            AND();
+            
+            value = a;
+            ROR();
+            a = value;
+        }; 
+        const std::function<void()> BVS = [&] () {
+            value = p >> OVERFLOW & 0x01; 
+        };
+        const std::function<void()> SEI = [&] () {
+            p |= 1 << INTERRUPT_DISABLE;
+            value = a;
+        };
+        const std::function<void()> STA = [&] () {
+            value = a;
+        };
+        const std::function<void()> SAX = [&] () {
+            value = a & x;
+        };
+        const std::function<void()> STY = [&] () {
+            value = y;
+        };
+        const std::function<void()> STX = [&] () {
+            value = x;
+        };
+        const std::function<void()> DEY = [&] () {
+            --y;
+            setBit(p, ZERO, y == 0);
+            setBit(p, NEGATIVE, y & 0x80);
+
+            value = a;
+        };
+        const std::function<void()> TXA = [&] () {
+            value = a = x;
+        };
+        const std::function<void()> BCC = [&] () {
+            value = ~(p >> CARRY & 0x01);
+        };
+        const std::function<void()> TYA = [&] () {
+            value = a = y;
+        };
+        const std::function<void()> TXS = [&] () {
+            sp = x;
+            value = a;
+        };
+        const std::function<void()> LDY = [&] () {
+            y = value;
+            setBit(p, ZERO, y == 0);
+            setBit(p, NEGATIVE, y & 0x80);
+        };
+        const std::function<void()> LDA = [&] () {
+            a = value;
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> LDX = [&] () {
+            x = value;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
+        };
+        const std::function<void()> LAX = [&] () {
+            a = x = value;
+            setBit(p, ZERO, a == 0);
+            setBit(p, NEGATIVE, a & 0x80);
+        };
+        const std::function<void()> TAY = [&] () {
+            y = a;
+            setBit(p, ZERO, y == 0);
+            setBit(p, NEGATIVE, y & 0x80);
+
+            value = a;
+        };
+        const std::function<void()> TAX = [&] () {
+            x = a;
+            setBit(p, ZERO, x == 0);
+            setBit(p, NEGATIVE, x & 0x80);
+
+            value = a;
         };
             
+            
 
+            
         
 
         //TODO: Table of CPU operations (where indices are opcodes):
         const std::vector<std::function<void()>> operations {
+        /*0*/   NUL, ORA, NUL, SLO, NOP, ORA, ASL, SLO,
+                PHP, ORA, ASL, ANC, NOP, ORA, ASL, SLO,
+
+        /*1*/   BPL, ORA, NUL, SLO, NOP, ORA, ASL, SLO,
+                CLC, ORA, NOP, SLO, NOP, ORA, ASL, SLO,
+
+        /*2*/   NUL, AND, NUL, RLA, BIT, AND, ROL, RLA,
+                PLP, AND, ROL, ANC, BIT, AND, ROL, RLA, 
+
+        /*3*/   BMI, AND, NUL, RLA, NOP, AND, ROL, RLA,
+                SEC, AND, NOP, RLA, NOP, AND, ROL, RLA, 
+    
+        /*4*/   NUL, EOR, NUL, SRE, NOP, EOR, LSR, SRE,
+                PHA, EOR, LSR, ALR, NUL, EOR, LSR, SRE,  
+                 
+        /*5*/   BVC, EOR, NUL, SRE, NOP, EOR, LSR, SRE,
+                CLI, EOR, NOP, SRE, NOP, EOR, LSR, SRE,
+        
+        /*6*/   NUL, ADC, NUL, RRA, NOP, ADC, ROR, RRA,
+                PLA, ADC, ROR, ARR, NUL, ADC, ROR, RRA,
+    
+        /*7*/   BVS, ADC, NUL, RRA, NOP, ADC, ROR, RRA,
+                SEI, ADC, NOP, RRA, NOP, ADC, ROR, RRA,
+
+        /*8*/   NOP, STA, NOP, SAX, STY, STA, STX, SAX,
+                DEY, NOP, TXA, NUL, STY, STA, STX, SAX,
+
+        /*9*/   BCC, STA, NUL, NUL, STY, STA, STX, SAX,
+                TYA, STA, TXS, NUL, NUL, STA, NUL, NUL, 
+        
+        /*A*/   LDY, LDA, LDX, LAX, LDY, LDA, LDX, LAX,
+                TAY, LDA, TAX, LAX, LDY, LDA, LDX, LAX,
+         
         };
 
         //Miscellanneous commonly used single-cycle lambdas:
@@ -109,7 +322,7 @@ class Cpu {
         //TODO: Individual cycle breakdown for each instruction:
         const std::vector<std::vector<std::function<void()
                 >>> instrCycles {
-            /*0: TODO: Interrupt timing */ {
+            /*0: Interrupt timing */ {
                 [&] () {
                     if (!(nmiPending || irqPending)) {
                         static_cast<u8>(memory[pc++]);
@@ -217,7 +430,10 @@ class Cpu {
                 },
             },
             /*6: Implied timing */ {
-                doOp,
+                [&] () {
+                    doOp();
+                    a = value;
+                },
             },
             /*7: Immediate timing */ {
                 [&] () {
@@ -761,7 +977,7 @@ class Cpu {
                             ] << 8 | address;
                 },
             },
-            /*35: NOP timing */ {
+            /*35: NUL timing */ {
             },
         };
 
@@ -776,8 +992,8 @@ class Cpu {
         /*5*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23, 
         /*6*/    2, 28, 35, 29, 12, 12, 13, 13,  4,  7,  6,  7, 34,  9, 10, 10,
         /*7*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,
-        /*8*/    7, 30,  7, 30, 14, 14, 14, 14,  6,  7,  6,  7, 11, 11, 11, 11, 
-        /*9*/   27, 33, 35, 33, 19, 19, 20, 20,  6, 26,  6, 26, 25, 25, 26, 26,
+        /*8*/    7, 30,  7, 30, 14, 14, 14, 14,  6,  7,  6, 35, 11, 11, 11, 11, 
+        /*9*/   27, 33, 35, 35, 19, 19, 20, 20,  6, 26,  6, 35, 35, 25, 35, 35,
         /*A*/    7, 28,  7, 28, 12, 12, 12, 12,  6,  7,  6,  7,  9,  9,  9,  9,
         /*B*/   27, 31, 35, 31, 15, 15, 16, 16,  6, 22,  6, 22, 21, 21, 22, 22,
         /*C*/    7, 28,  7, 29, 12, 12, 13, 13,  6,  7,  6,  7,  9,  9,  9,  9,
