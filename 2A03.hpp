@@ -1,5 +1,7 @@
 #pragma once
 #include <cassert>
+#include <array>
+#include <vector>
 #include <functional>
 #include "debug.hpp"
 #include "byte.hpp"
@@ -396,7 +398,7 @@ class Cpu {
         };
             
             
-        const std::vector<std::function<void()>> operations {
+        const std::array<std::function<void()>, 0x100> operations {
         /*0*/   NUL, ORA, NUL, SLO, NOP, ORA, ASL, SLO,
                 PHP, ORA, ASL, ANC, NOP, ORA, ASL, SLO,
         /*1*/   BPL, ORA, NUL, SLO, NOP, ORA, ASL, SLO,
@@ -440,8 +442,7 @@ class Cpu {
             operations[opcode]();
         };
 
-        const std::vector<std::vector<std::function<void()
-                >>> instrCycles {
+        const std::vector<std::vector<std::function<void()>>> instrCycles {
             /*0: Interrupt timing */ {
                 [&] () {
                     if (!(nmiPending || irqPending)) {
@@ -1113,7 +1114,7 @@ class Cpu {
             },
         };
 
-        const std::vector<u8_fast> instrTimings {
+        const std::array<u8_fast, 0x100> instrTimings {
         //      .0, .1, .2, .3, .4, .5, .6, .7, .8, .9, .A, .B, .C, .D, .E, .F, 
         /*0*/    0, 28, 35, 29, 12, 12, 13, 13,  3,  7,  6,  7,  9,  9, 10, 10, 
         /*1*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,  
