@@ -48,8 +48,16 @@ class Cpu {
         //Interrupt status (updated before final cycle or manually):
         bool irqPending; 
         bool nmiPending;
-        //Toggles default interrupt polling behavior (before final cycle):
-        bool defaultInterruptPoll; 
+        //Default value for interruptCondition (declared below):
+        const std::function<bool()> defaultInterruptCondition = [&] () {
+            //Poll interrupts before the final cycle of every instruction
+            //and before the second cycle of relative instructions:
+            return instrCycle == instrCycles[27].begin()
+                || instrCycle == instrCycles[instrTimings[opcode]].end() - 1;
+        }; 
+        //If lambda returns true, interrupts 
+        //will be polled at the end of a tick:
+        std::function<bool()> interruptCondition;
 
         //General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
@@ -887,7 +895,6 @@ class Cpu {
             },
             /*27: Relative timing */ {
                 [&] () {
-                    defaultInterruptPoll = false;
                     offset = toSigned(memory[pc++]);
                 },
                 [&] () {
@@ -899,6 +906,9 @@ class Cpu {
                              && (pc & 0x00FF) + offset >= 0) {
                             //Skip PCH fixup:
                             instrCycleStep = 2; 
+                            interruptCondition = [&] () {
+                                return false;
+                            };
                         }
                         else {
                             nmiPending |= nmiLevel;
@@ -913,11 +923,14 @@ class Cpu {
                     debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
-                    defaultInterruptPoll = true;
+                    interruptCondition = defaultInterruptCondition;
                 },
                 [&] () {
                     //PCH fixup:
                     opcode = memory[pc - offset];
+                    interruptCondition = [&] () {
+                        return false;
+                    };
                 },
                 [&] () {
                     opcode = memory[pc++];
@@ -925,7 +938,7 @@ class Cpu {
                     debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
-                    defaultInterruptPoll = true;
+                    interruptCondition = defaultInterruptCondition;
                 },
             },
             /*28: Pre-indexed read timing */ {
@@ -1125,13 +1138,12 @@ class Cpu {
         //Memory:
         MappedMemory<> memory;
 
-        //TODO: remove
         Cpu()
               : memory(0xFFFF) {
         }
 
         void reset() {
-            defaultInterruptPoll = true;
+            interruptCondition = defaultInterruptCondition;
             nmiPending = false;
             irqPending = false;
             nmiLevel = false;
@@ -1146,34 +1158,26 @@ class Cpu {
             instrCycle = instrCycles[instrTimings[opcode]].end();
             instrCycleStep = 1;
 
+
             //TODO: remove
-            debug::log << std::hex; 
+            debug::log << std::hex;
         } 
 
         void tick() {
-
             //Fetch next opcode if instruction has finished: 
             if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
                 opcode = (nmiPending || irqPending ? 0 : memory[pc++]);
                 //TODO: remove
                 debugOutput();
                 instrCycle = instrCycles[instrTimings[opcode]].begin();
-
-                //TODO: Better solution for relative branching
-                if (instrCycle == instrCycles[27].begin()) {
-                    pollInterrupts();
-                }
-
-                return;
+            }
+            else {
+                (*instrCycle)();
+                instrCycle += instrCycleStep;
+                instrCycleStep = 1;
             }
 
-            (*instrCycle)();
-            instrCycle += instrCycleStep;
-            instrCycleStep = 1;
-
-            if (
-                    instrCycle == instrCycles[instrTimings[opcode]].end() - 1
-                 && defaultInterruptPoll) { 
+            if (interruptCondition()) {
                 pollInterrupts();
             }
         }
@@ -1196,15 +1200,16 @@ class Cpu {
 
         //TODO: remove 
         void debugOutput() {
-            debug::log << std::setfill('0') << std::setw(4) << pc << "\n";
-            /*debug::log << "OP: " << static_cast<int>(opcode) << "  ";
+            debug::log << "PC: " << std::setfill('0') << std::setw(4) 
+                       << pc << "  ";
+            debug::log << "OP: " << static_cast<int>(opcode) << "  ";
             debug::log << "VAL: " << static_cast<int>(value) << "  ";
             debug::log << "ADDR: " << address << "  "; 
             debug::log << "A: " << static_cast<int>(a) << "  ";
             debug::log << "X: " << static_cast<int>(x) << "  ";
             debug::log << "Y: " << static_cast<int>(y) << "  ";
             debug::log << "P: " << static_cast<int>(p) << "  ";
-            debug::log << "SP: " << static_cast<int>(sp) << "  \n";*/
+            debug::log << "SP: " << static_cast<int>(sp) << "  \n";
         }
 
 };

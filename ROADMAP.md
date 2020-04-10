@@ -1,5 +1,4 @@
 # Roadmap
-+ 2A03 core
 + Basic cartridge loader
 + Full system interface (with dummy APU and PPU) 
 + APU
