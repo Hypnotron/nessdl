@@ -1377,7 +1377,7 @@ class Apu {
             Counter<s16_fast> timer{0, [&] () {
                 sequencePos.tick();
                 //Override default reload logic:
-                timer.counter = sweep.period;
+                timer.counter = sweep.period * 2 + 1;
             }};
 
             void tick() {
@@ -1725,8 +1725,6 @@ class Apu {
         void pulseWrite3(Pulse& pulse, u8 data) const {
             pulse.sweep.period &= 0x00FF;
             pulse.sweep.period |= (data & 0x07) << 8;
-            pulse.sweep.period *= 2;
-            ++pulse.sweep.period;
             pulse.lengthCounter.counter.counter = lengths[data >> 3];
             pulse.sequencePos.counter = 0;
             pulse.envelope.start = true;
@@ -1958,7 +1956,7 @@ class Apu {
                                 3 * triangle.output()
                               + 2 * noise.output()
                               + dmc.output()]) * 0x100;
-                //std::cout.write(reinterpret_cast<char*>(&out), 1); 
+                std::cout.write(reinterpret_cast<char*>(&out), 1); 
             }
         }
 };
