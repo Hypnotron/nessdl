@@ -2,7 +2,8 @@
 #include <functional>
 #include "byte.hpp"
 
-template <typename CounterType = u8_fast>
+//TODO: Big tick
+template <typename CounterType> 
 struct Counter {
     CounterType counter;
     CounterType reload;
@@ -14,9 +15,9 @@ struct Counter {
           : reload{reload}, function{function}, counter{reload} {
     }
 
-    void tick() {
-        if(counter-- <= 0) {
-            counter = reload;
+    void tick(CounterType ticks = 1) {
+        if((counter -= ticks) < 0) {
+            counter += reload + 1;
             function();
         }
     }

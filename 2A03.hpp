@@ -1250,14 +1250,12 @@ class Cpu {
 
 class Apu {
     //TODO: Power-up state
-    //TODO: Mixer
     private:
         struct LengthCounter {
-            //TODO: Load value lookup table
-            bool enabled; 
+            bool enabled {false}; 
             bool halt;
 
-            Counter<u16_fast> counter{0, [&] () {
+            Counter<s16_fast> counter{0, [&] () {
                  counter.counter = 0;
             }};
 
@@ -1278,7 +1276,7 @@ class Apu {
             bool reload;
             bool control;       
             
-            Counter<u8_fast> counter{0, [&] () {
+            Counter<s8_fast> counter{0, [&] () {
                 counter.counter = 0;
             }};
 
@@ -1304,7 +1302,7 @@ class Apu {
             u8_fast shiftCount;
             u16_fast period {0};
 
-            Counter<> timer{0, [&] () {
+            Counter<s8_fast> timer{0, [&] () {
                 if (
                         enabled 
                      && shiftCount > 0 
@@ -1320,7 +1318,7 @@ class Apu {
                 //rather than APU clock based period:
                 s16_fast change = period >> shiftCount;
                 change = (negate ? -change : change);
-                change -= negate && trueNegate; 
+                change -= (period + change > 0) && negate && trueNegate; 
                 return period + change;
             }
 
@@ -1336,12 +1334,12 @@ class Apu {
             bool start;
             bool loop;
 
-            Counter<> decayLevel{15, [&] () {
+            Counter<s8_fast> decayLevel{15, [&] () {
                 if (!loop) {
                     decayLevel.counter = 0;
                 }
             }};
-            Counter<> timer{0, [&] () {
+            Counter<s8_fast> timer{0, [&] () {
                 decayLevel.tick();
             }};
 
@@ -1375,8 +1373,8 @@ class Apu {
             Envelope envelope;
             Sweep sweep;
             
-            Counter<> sequencePos{7, [] () {}};
-            Counter<u16_fast> timer{0, [&] () {
+            Counter<s8_fast> sequencePos{7, [] () {}};
+            Counter<s16_fast> timer{0, [&] () {
                 sequencePos.tick();
                 //Override default reload logic:
                 timer.counter = sweep.period;
@@ -1408,7 +1406,7 @@ class Apu {
             LinearCounter linearCounter;
             LengthCounter lengthCounter;
 
-            Counter<u16_fast> timer{0, [&] () {
+            Counter<s16_fast> timer{0, [&] () {
                 if (ascending) {
                     if (volume == 15) {
                         ascending = false;
@@ -1445,7 +1443,7 @@ class Apu {
             Envelope envelope;
             LengthCounter lengthCounter;
 
-            Counter<u16_fast> timer{0, [&] () {
+            Counter<s16_fast> timer{0, [&] () {
                 bool feedback = (lfsr ^ (mode ? lfsr >> 6 : lfsr >> 1)) & 1;
                 lfsr >>= 1;
                 setBit(lfsr, 14, feedback);
@@ -1550,8 +1548,6 @@ class Apu {
                 return tmp;
             }
 
-            //TODO: remember that one should be 
-            //subtracted from actual reload value
             Counter<s32_fast> bytesRemaining{0, [&] () {
                 if (loop) {
                     address = startAddress;
@@ -1564,7 +1560,7 @@ class Apu {
                 }
             }};
 
-            Counter<> bitsRemaining{7, [&] () {
+            Counter<s8_fast> bitsRemaining{7, [&] () {
                 u8_fast tmp {emptySampleBuffer()};
                 if (tmp == 0) {
                     silence = true;
@@ -1574,7 +1570,7 @@ class Apu {
                     shiftRegister = tmp; 
                 }
             }};
-            Counter<u16_fast> timer{0, [&] () {
+            Counter<s16_fast> timer{0, [&] () {
                 if (!silence) {
                     if (shiftRegister & 0x01 && volume <= 125) {
                         volume += 2;
@@ -1694,8 +1690,8 @@ class Apu {
             0.74246760538076,
         };
         const std::array<u16_fast, 16> noisePeriods {
-               4,    8,   16,   32,   64,   96,  128,  160, 
-             202,  254,  380,  508,  762, 1016, 2034, 4068,
+               3,    7,   15,   31,   63,   95,  127,  159, 
+             201,  253,  379,  507,  761, 1015, 2033, 4067,
         };
         const std::array<u8_fast, 32> lengths {
              10, 254,  20,   2,  40,   4,  80,   6,
@@ -1704,8 +1700,8 @@ class Apu {
             192,  24,  72,  26,  16,  28,  32,  30,
         };
         const std::array<u16_fast, 16> dmcPeriods {
-            428, 380, 340, 320, 286, 254, 226, 214, 
-            190, 160, 142, 128, 106,  84,  72,  54,
+            427, 379, 339, 319, 287, 253, 225, 213, 
+            189, 159, 141, 127, 105,  83,  71,  53,
         };
 
         void pulseWrite0(Pulse& pulse, u8 data) {
@@ -1729,6 +1725,8 @@ class Apu {
         void pulseWrite3(Pulse& pulse, u8 data) const {
             pulse.sweep.period &= 0x00FF;
             pulse.sweep.period |= (data & 0x07) << 8;
+            pulse.sweep.period *= 2;
+            ++pulse.sweep.period;
             pulse.lengthCounter.counter.counter = lengths[data >> 3];
             pulse.sequencePos.counter = 0;
             pulse.envelope.start = true;
@@ -1737,7 +1735,6 @@ class Apu {
     public:
         Apu(Cpu& cpu)
               : cpu{cpu} { 
-            //TODO: fix
             pulse2.sweep.trueNegate = false;
 
             for (u16 address : {0x4009, 0x400D, 0x4014, 0x4016}) {
@@ -1910,7 +1907,6 @@ class Apu {
                 //of data are set but IRQ is not released if the read 
                 //occurs on the same cycle the interrupt is generated:
                 cpu.releaseIrq(frameCounter.irqId);
-                cpu.releaseIrq(dmc.irqId);
 
                 return data;
             };
@@ -1941,15 +1937,12 @@ class Apu {
         }
 
         void tick() {
-            static bool odd {false};
+            pulse1.tick();
+            pulse2.tick();
             triangle.tick();
-            frameCounter.tick();
-            dmc.tick();
             noise.tick();
-            if ((odd = !odd)) {
-                pulse1.tick();
-                pulse2.tick();
-            }
+            dmc.tick();
+            frameCounter.tick();
 
             debugOutput();
         }
@@ -1962,10 +1955,10 @@ class Apu {
                                 pulse1.output()
                               + pulse2.output()]
                          + tndOutput[
-                                triangle.output()
-                              + noise.output()
+                                3 * triangle.output()
+                              + 2 * noise.output()
                               + dmc.output()]) * 0x100;
-                std::cout.write(reinterpret_cast<char*>(&out), 1); 
+                //std::cout.write(reinterpret_cast<char*>(&out), 1); 
             }
         }
 };

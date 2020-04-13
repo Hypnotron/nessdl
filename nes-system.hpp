@@ -1,7 +1,5 @@
 #pragma once
 #include <string>
-//TODO: remove
-#include <iostream>
 #include "debug.hpp"
 #include "counter.hpp"
 #include "ines.hpp"
@@ -13,7 +11,7 @@ class Nes {
         Cpu cpu;
         Apu apu{cpu};
         
-        Counter<> cpuClock{11, [&] () {
+        Counter<s8_fast> cpuClock{11, [&] () {
             cpu.tick();
             apu.tick();
         }};
