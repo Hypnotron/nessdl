@@ -1,4 +1,5 @@
 #pragma once
+#include <limits>
 #include <vector>
 #include <map>
 #include <functional>
@@ -51,6 +52,16 @@ class MappedMemory {
 
         MappedMemory(const size_t size) { 
             resize(size);
+            readFunctions[std::numeric_limits<AddressType>::max()] = [] (
+                    MappedMemory* const, 
+                    const AddressType) {
+                return DataType();
+            };
+            writeFunctions[std::numeric_limits<AddressType>::max()] = [] (
+                    MappedMemory* const,
+                    const AddressType,
+                    const DataType) {
+            };
         }
 };
 

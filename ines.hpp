@@ -80,6 +80,7 @@ namespace ines {
                 cpuMemory.writeFunctions[0x7FFF] = openBusWrite;
             }
             
+            cpuMemory.resize(prgSize == 1 ? 0xC000 : 0x10000);
             rom.read(reinterpret_cast<char*>(
                     cpuMemory.memory.data() + 0x8000), 
                     prgSize == 1 ? 0x4000 : 0x8000); 

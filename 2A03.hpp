@@ -1,10 +1,13 @@
 #pragma once
+//TODO: remove
+#include <iostream>
 #include <cassert>
 #include <array>
 #include <vector>
 #include <functional>
 #include "debug.hpp"
 #include "byte.hpp"
+#include "counter.hpp"
 #include "memory.hpp"
 
 class Cpu {
@@ -55,7 +58,7 @@ class Cpu {
             //Poll interrupts before the final cycle of every instruction
             //and before the second cycle of relative instructions:
             return instrCycle == instrCycles[27].begin()
-                || instrCycle == instrCycles[instrTimings[opcode]].end() - 1;
+                || instrCycle == instrCycles[instrTimings[opcode]].end() - 2;
         }; 
         //If lambda returns true, interrupts 
         //will be polled at the end of a tick:
@@ -441,6 +444,13 @@ class Cpu {
         const std::function<void()> doOp = [&] () {
             operations[opcode]();
         };
+        const std::function<void()> fetchOp = [&] () {
+            opcode = (nmiPending || irqPending) ? 0 : memory[pc++];
+            instrCycle = instrCycles[instrTimings[opcode]].begin();
+            instrCycleStep = 0;
+
+            debugOutput();
+        };
 
         const std::vector<std::vector<std::function<void()>>> instrCycles {
             /*0: Interrupt timing */ {
@@ -473,6 +483,7 @@ class Cpu {
                 [&] () {
                     pc |= memory[address] << 8;
                 }, 
+                fetchOp,
             },
             /*1: RTI timing: */ {
                 dummyReadNextByte,
@@ -493,6 +504,7 @@ class Cpu {
                 [&] () {
                     pc |= pull() << 8;
                 },
+                fetchOp,
             },
             /*2: RTS timing */ {
                 dummyReadNextByte,
@@ -512,6 +524,7 @@ class Cpu {
                 [&] () {
                     ++pc;
                 },
+                fetchOp,
             },
             /*3: Stack push timing */ {
                 dummyReadNextByte,
@@ -519,6 +532,7 @@ class Cpu {
                     doOp();
                     --sp;
                 },
+                fetchOp,
             },
             /*4: Stack pull timing */ {
                 dummyReadNextByte,
@@ -529,6 +543,7 @@ class Cpu {
                     ++sp;
                 },
                 doOp,
+                fetchOp,
             },
             /*5: JSR timing */ {
                 [&] () {
@@ -548,18 +563,21 @@ class Cpu {
                 [&] () {
                     pc = memory[pc] << 8 | address;
                 },
+                fetchOp,
             },
             /*6: Implied timing */ {
                 [&] () {
                     doOp();
                     a = value;
                 },
+                fetchOp,
             },
             /*7: Immediate timing */ {
                 [&] () {
                     value = memory[pc++];
                     doOp();
                 },
+                fetchOp,
             }, 
             /*8: Absolute JMP timing */ {
                 [&] () {
@@ -568,6 +586,7 @@ class Cpu {
                 [&] () {
                     pc = memory[pc] << 8 | address;
                 },
+                fetchOp,
             },
             /*9: Absolute read timing */ {
                 [&] () {
@@ -580,6 +599,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 },
+                fetchOp,
             },
             /*10: Absolute read-modify-write timing */ {
                 [&] () {
@@ -598,6 +618,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*11: Absolute write timing */ {
                 [&] () {
@@ -610,6 +631,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*12: Zero page read timing */ {
                 [&] () {
@@ -619,6 +641,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 },
+                fetchOp,
             },
             /*13: Zero page read-modify-write timing */ {
                 [&] () {
@@ -634,6 +657,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*14: Zero page write timing */ {
                 [&] () {
@@ -643,6 +667,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*15: Zero page x-indexed read timing */ {
                 [&] () {
@@ -657,6 +682,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 },
+                fetchOp,
             },
             /*16: Zero page y-indexed read timing */ {
                 [&] () {
@@ -671,6 +697,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 },
+                fetchOp,
             },
             /*17: Zero page x-indexed read-modify-write timing */ {
                 [&] () {
@@ -691,6 +718,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*18: Zero page y-indexed read-modify-write timing */ {
                 [&] () {
@@ -711,6 +739,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*19: Zero page x-indexed write timing */ {
                 [&] () {
@@ -725,6 +754,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*20: Zero page y-indexed write timing */ {
                 [&] () {
@@ -739,6 +769,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*21: Absolute x-indexed read timing */ {
                 [&] () {
@@ -760,6 +791,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 }, 
+                fetchOp,
             },
             /*22: Absolute y-indexed read timing */ {
                 [&] () {
@@ -781,6 +813,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 }, 
+                fetchOp,
             },
             /*23: Absolute x-indexed read-modify-write timing */ {
                 [&] () {
@@ -813,6 +846,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value; 
                 },
+                fetchOp,
             },
             /*24: Absolute y-indexed read-modify-write timing */ {
                 [&] () {
@@ -845,6 +879,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value; 
                 },
+                fetchOp,
             },
             /*25: Absolute x-indexed write timing */ {
                 [&] () {
@@ -869,6 +904,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*26: Absolute y-indexed write timing */ {
                 [&] () {
@@ -893,6 +929,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*27: Relative timing */ {
                 [&] () {
@@ -920,11 +957,11 @@ class Cpu {
                         return;
                     }
                     ++pc;
-                    //TODO: remove
-                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     interruptCondition = defaultInterruptCondition;
+
+                    debugOutput();
                 },
                 [&] () {
                     //PCH fixup:
@@ -935,11 +972,11 @@ class Cpu {
                 },
                 [&] () {
                     opcode = memory[pc++];
-                    //TODO: remove
-                    debugOutput();
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     interruptCondition = defaultInterruptCondition;
+
+                    debugOutput();
                 },
             },
             /*28: Pre-indexed read timing */ {
@@ -960,6 +997,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 },
+                fetchOp,
             },
             /*29: Pre-indexed read-modify-write timing */ {
                 [&] () {
@@ -985,6 +1023,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*30: Pre-indexed write timing */ {
                 [&] () {
@@ -1004,6 +1043,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*31: Post-indexed read timing */ {
                 [&] () {
@@ -1028,6 +1068,7 @@ class Cpu {
                     value = memory[address];
                     doOp();
                 },
+                fetchOp,
             },
             /*32: Post-indexed read-modify-write timing */ {
                 [&] () {
@@ -1063,6 +1104,7 @@ class Cpu {
                 [&] () {
                     memory[address] = value;
                 },
+                fetchOp,
             },
             /*33: Post-indexed write timing */ {
                 [&] () {
@@ -1092,6 +1134,7 @@ class Cpu {
                     doOp();
                     memory[address] = value;
                 },
+                fetchOp,
             }, 
             /*34: JMP indirect timing */ {
                 [&] () {
@@ -1109,8 +1152,10 @@ class Cpu {
                             pointerAddressHigh << 8 | pointerAddress 
                             ] << 8 | address;
                 },
+                fetchOp,
             },
             /*35: NUL timing */ {
+                fetchOp,
             },
         };
 
@@ -1137,11 +1182,7 @@ class Cpu {
 
     public:
         //Memory:
-        MappedMemory<> memory;
-
-        Cpu()
-              : memory(0xFFFF) {
-        }
+        MappedMemory<> memory{0};
 
         void reset() {
             interruptCondition = defaultInterruptCondition;
@@ -1154,9 +1195,8 @@ class Cpu {
             p |= 0x04; //set interrupt disable 
             pc = readBytes<2, u16>(memory.begin() + 0xFFFC);
 
-            //Invalidate the next cycle iterator so 
-            //that an opcode fetch occurs next tick:
-            instrCycle = instrCycles[instrTimings[opcode]].end();
+            //Set the next cycle iterator to an arbitrary opcode fetch:
+            instrCycle = instrCycles[0].end() - 1;
             instrCycleStep = 1;
 
 
@@ -1165,18 +1205,9 @@ class Cpu {
         } 
 
         void tick() {
-            //Fetch next opcode if instruction has finished: 
-            if (instrCycle == instrCycles[instrTimings[opcode]].end()) {
-                opcode = (nmiPending || irqPending ? 0 : memory[pc++]);
-                //TODO: remove
-                debugOutput();
-                instrCycle = instrCycles[instrTimings[opcode]].begin();
-            }
-            else {
-                (*instrCycle)();
-                instrCycle += instrCycleStep;
-                instrCycleStep = 1;
-            }
+            (*instrCycle)();
+            instrCycle += instrCycleStep;
+            instrCycleStep = 1;
 
             if (interruptCondition()) {
                 pollInterrupts();
@@ -1195,12 +1226,15 @@ class Cpu {
         void releaseIrq(u8_fast bit) {
             irqLevel &= ~(1 << bit);
         }
+        bool isPullingIrq(u8_fast bit) {
+            return (irqLevel >> bit) & 1;
+        }
         void edgeNmi() {
             nmiLevel = true;
         }
 
         //TODO: remove 
-        void debugOutput() {
+        void debugOutput () const {
             debug::log << "PC: " << std::setfill('0') << std::setw(4) 
                        << pc << "  ";
             debug::log << "OP: " << static_cast<int>(opcode) << "  ";
@@ -1212,6 +1246,727 @@ class Cpu {
             debug::log << "P: " << static_cast<int>(p) << "  ";
             debug::log << "SP: " << static_cast<int>(sp) << "  \n";
         }
+};
 
+class Apu {
+    //TODO: Power-up state
+    //TODO: Mixer
+    private:
+        struct LengthCounter {
+            //TODO: Load value lookup table
+            bool enabled; 
+            bool halt;
+
+            Counter<u16_fast> counter{0, [&] () {
+                 counter.counter = 0;
+            }};
+
+            void tick() {
+                if (!enabled) {
+                    counter.counter = 0;
+                }
+                else if (!halt) {
+                    counter.tick();
+                }
+            } 
+
+            bool isNonZero() const {
+                return enabled && counter.counter > 0;
+            } 
+        };
+        struct LinearCounter {
+            bool reload;
+            bool control;       
+            
+            Counter<u8_fast> counter{0, [&] () {
+                counter.counter = 0;
+            }};
+
+            void tick() {
+                counter.tick();
+                if (reload) {
+                    counter.counter = counter.reload;
+                }
+                if (!control) {
+                    reload = false;
+                }
+            }
+
+            bool isNonZero() const {
+                return counter.counter > 0;
+            }
+        };
+        struct Sweep {
+            bool reload;
+            bool enabled;
+            bool negate;
+            bool trueNegate {true};
+            u8_fast shiftCount;
+            u16_fast period {0};
+
+            Counter<> timer{0, [&] () {
+                if (
+                        enabled 
+                     && shiftCount > 0 
+                     && period >= 8 
+                     && targetPeriod() <= 0x7FF) {
+                    period = targetPeriod();
+                }
+                reload = false;
+            }};
+                     
+            u16_fast targetPeriod() const {
+                //Compensate for CPU clock based 
+                //rather than APU clock based period:
+                s16_fast change = period >> shiftCount;
+                change = (negate ? -change : change);
+                change -= negate && trueNegate; 
+                return period + change;
+            }
+
+            void tick() {
+                timer.tick();
+                if (reload) {
+                    reload = false;
+                    timer.counter = timer.reload;
+                }
+            }
+        };
+        struct Envelope {
+            bool start;
+            bool loop;
+
+            Counter<> decayLevel{15, [&] () {
+                if (!loop) {
+                    decayLevel.counter = 0;
+                }
+            }};
+            Counter<> timer{0, [&] () {
+                decayLevel.tick();
+            }};
+
+            void tick() {
+                if (start) {
+                    start = false;
+                    decayLevel.counter = decayLevel.reload;
+                    timer.counter = timer.reload;
+                }
+                else {
+                    timer.tick();
+                }
+            }
+
+            u8_fast output() const {
+                return decayLevel.counter;
+            }
+        };
+        struct Pulse {
+            const std::array<std::array<bool, 8>, 4> sequences {{
+                {0, 0, 0, 0, 0, 0, 0, 1},
+                {0, 0, 0, 0, 0, 0, 1, 1},
+                {0, 0, 0, 0, 1, 1, 1, 1},
+                {1, 1, 1, 1, 1, 1, 0, 0},
+            }};
+
+            u8_fast duty;
+            bool ignoreEnvelope;
+
+            LengthCounter lengthCounter;
+            Envelope envelope;
+            Sweep sweep;
+            
+            Counter<> sequencePos{7, [] () {}};
+            Counter<u16_fast> timer{0, [&] () {
+                sequencePos.tick();
+                //Override default reload logic:
+                timer.counter = sweep.period;
+            }};
+
+            void tick() {
+                timer.tick();
+            }
+
+            u8_fast output() const {
+                if (
+                        sequences[duty][sequencePos.counter] 
+                     && sweep.targetPeriod() <= 0x7FF
+                     && lengthCounter.isNonZero()
+                     && sweep.period >= 8) {
+                    return ignoreEnvelope 
+                          ? envelope.timer.reload 
+                          : envelope.output();
+                }
+                else {
+                    return 0; 
+                }
+            } 
+        };
+        struct Triangle {
+            bool ascending {false};
+            u8_fast volume;
+
+            LinearCounter linearCounter;
+            LengthCounter lengthCounter;
+
+            Counter<u16_fast> timer{0, [&] () {
+                if (ascending) {
+                    if (volume == 15) {
+                        ascending = false;
+                    }
+                    else {
+                        ++volume;
+                    }
+                }    
+                else {
+                    if (volume == 0) {
+                        ascending = true;
+                    }
+                    else {
+                        --volume;
+                    }
+                }
+            }};
+
+            void tick() {
+                if (lengthCounter.isNonZero() && linearCounter.isNonZero()) {
+                    timer.tick();
+                }
+            }
+
+            u8_fast output() const {
+                return volume;
+            }
+        };
+        struct Noise {
+            bool mode;
+            bool ignoreEnvelope;
+            u16_fast lfsr {0x0001};
+
+            Envelope envelope;
+            LengthCounter lengthCounter;
+
+            Counter<u16_fast> timer{0, [&] () {
+                bool feedback = (lfsr ^ (mode ? lfsr >> 6 : lfsr >> 1)) & 1;
+                lfsr >>= 1;
+                setBit(lfsr, 14, feedback);
+            }};
+
+            void tick() {
+                timer.tick();
+            }
+
+            u8_fast output() const {
+                if (lengthCounter.isNonZero() && lfsr & 1) {
+                    return ignoreEnvelope 
+                          ? envelope.timer.reload 
+                          : envelope.output();
+                }
+                else {
+                    return 0;
+                }
+            }
+        };
+        struct FrameCounter {
+            Apu& apu;
+
+            s32_fast cycle {0};
+            bool fourStep;
+            bool interruptInhibit;
+            u8_fast irqId;
+
+            FrameCounter(Apu& apu)
+                  : apu{apu} {
+                irqId = apu.cpu.connectIrq();
+            }
+
+            void tick() {
+                ++cycle;
+                if (cycle == 7457 || cycle == 22371) {
+                    apu.pulse1.envelope.tick();
+                    apu.pulse2.envelope.tick();
+                    apu.triangle.linearCounter.tick();
+                    apu.noise.envelope.tick();
+                }
+                if (
+                        cycle == 14913
+                     || (fourStep && cycle == 29829)
+                     || (!fourStep && cycle == 37281)) {
+                    apu.pulse1.sweep.tick();
+                    apu.pulse2.sweep.tick();
+
+                    apu.pulse1.lengthCounter.tick();
+                    apu.pulse2.lengthCounter.tick();
+                    apu.triangle.lengthCounter.tick();
+                    apu.noise.lengthCounter.tick();
+                }
+                if (fourStep && cycle >= 29828) {
+                    apu.cpu.pullIrq(irqId);
+                }
+
+                if (
+                        (fourStep && cycle == 29830)
+                     || (!fourStep && cycle == 37282)) {
+                    cycle = 0;
+                }
+
+                if (interruptInhibit) {
+                    apu.cpu.releaseIrq(irqId);
+                }
+
+            } 
+        };
+        struct Dmc {
+            //TODO: proper channel disable
+            Apu& apu;
+
+            u8_fast irqId;
+            u8_fast volume {0};
+            bool irqEnabled;
+            bool silence;
+            bool enabled;
+            bool loop;
+            u8_fast shiftRegister;
+            u8_fast sampleBuffer {0};
+            u16_fast startAddress;
+            u16_fast address;
+
+            Dmc(Apu& apu)
+                  : apu{apu} {
+                irqId = apu.cpu.connectIrq();
+            }
+
+            u8_fast emptySampleBuffer() {
+                u8_fast tmp {sampleBuffer};
+                if (enabled) {
+                    bytesRemaining.tick();
+                    if (bytesRemaining.counter > -1) {
+                        //TODO: stall cpu
+                        sampleBuffer = apu.cpu.memory[address++];
+                        address |= 0x8000;
+                        return tmp;
+                    }
+                }
+                sampleBuffer = 0;
+                return tmp;
+            }
+
+            //TODO: remember that one should be 
+            //subtracted from actual reload value
+            Counter<s32_fast> bytesRemaining{0, [&] () {
+                if (loop) {
+                    address = startAddress;
+                }
+                else {
+                    bytesRemaining.counter = -1;
+                    if (irqEnabled) {
+                        apu.cpu.pullIrq(irqId);
+                    }
+                }
+            }};
+
+            Counter<> bitsRemaining{7, [&] () {
+                u8_fast tmp {emptySampleBuffer()};
+                if (tmp == 0) {
+                    silence = true;
+                }
+                else {
+                    silence = false;
+                    shiftRegister = tmp; 
+                }
+            }};
+            Counter<u16_fast> timer{0, [&] () {
+                if (!silence) {
+                    if (shiftRegister & 0x01 && volume <= 125) {
+                        volume += 2;
+                    }
+                    else if (!(shiftRegister & 0x01) && volume >= 2) {
+                        volume -= 2;
+                    }
+                }
+                shiftRegister >>= 1;
+                bitsRemaining.tick();
+            }};
+
+            void tick() {
+                if (!irqEnabled) {
+                    apu.cpu.releaseIrq(irqId);
+                }
+                timer.tick();
+            }
+
+            u8_fast output() const {
+                return volume;
+            }
+        };
+
+        Cpu& cpu;
+
+        FrameCounter frameCounter{*this};
+
+        Pulse pulse1; 
+        Pulse pulse2;
+        Triangle triangle;
+        Noise noise;
+        Dmc dmc{*this};
+
+        const std::array<double, 31> pulseOutput {
+            0,
+            0.01160913952357, 0.02293948126801, 0.03400094921689, 
+            0.04480300187617, 0.05535465924895, 0.06566452795600, 
+            0.07574082464884, 0.08559139784946, 0.09522374833850, 
+            0.10464504820333, 0.11386215864759, 0.12288164665523, 
+            0.13170980059398, 0.14035264483627, 0.14881595346905, 
+            0.15710526315789, 0.16522588522589, 0.17318291700242,
+            0.18098125249302, 0.18862559241706, 0.19612045365663, 
+            0.20347017815647, 0.21067894131185, 0.21775075987842, 
+            0.22468949943545, 0.23149888143177, 0.23818248984115, 
+            0.24474377745242, 0.25118607181719, 0.25751258087707, 
+        };
+        const std::array<double, 203> tndOutput {
+            0,
+            0.00669982397969, 0.01334502018019, 0.01993625400950, 
+            0.02647418011241, 0.03295944258729, 0.03939267519756, 
+            0.04577450157816, 0.05210553543714, 0.05838638075230, 
+            0.06461763196336, 0.07079987415942, 0.07693368326217, 
+            0.08301962620469, 0.08905826110614, 0.09505013744241, 
+            0.10099579621273, 0.10689577010258, 0.11275058364270, 
+            0.11856075336460, 0.12432678795245, 0.13004918839154, 
+            0.13572844811339, 0.14136505313756, 0.14695948221033, 
+            0.15251220694025, 0.15802369193063, 0.16349439490917, 
+            0.16892476685466, 0.17431525212090, 0.17966628855794, 
+            0.18497830763061, 0.19025173453449, 0.19548698830939, 
+            0.20068448195030, 0.20584462251608, 0.21096781123563, 
+            0.21605444361197, 0.22110490952398, 0.22611959332601, 
+            0.23109887394543, 0.23604312497802, 0.24095271478145, 
+            0.24582800656677, 0.25066935848794, 0.25547712372958, 
+            0.26025165059283, 0.26499328257949, 0.26970235847437, 
+            0.27437921242602, 0.27902417402571, 0.28363756838493, 
+            0.28821971621118, 0.29277093388234, 0.29729153351946, 
+            0.30178182305810, 0.30624210631829, 0.31067268307303, 
+            0.31507384911547, 0.31944589632472, 0.32378911273039, 
+            0.32810378257583, 0.33239018638016, 0.33664860099905, 
+            0.34087929968434, 0.34508255214246, 0.34925862459181, 
+            0.35340777981888, 0.35753027723345, 0.36162637292260, 
+            0.36569631970379, 0.36974036717681, 0.37375876177487, 
+            0.37775174681463, 0.38171956254531, 0.38566244619686, 
+            0.38958063202731, 0.39347435136907, 0.39734383267453, 
+            0.40118930156071, 0.40501098085310, 0.40880909062876, 
+            0.41258384825848, 0.41633546844831, 0.42006416328027, 
+            0.42377014225228, 0.42745361231741, 0.43111477792243, 
+            0.43475384104561, 0.43837100123386, 0.44196645563923, 
+            0.44554039905471, 0.44909302394942, 0.45262452050314, 
+            0.45613507664028, 0.45962487806320, 0.46309410828495, 
+            0.46654294866144, 0.46997157842304, 0.47338017470566, 
+            0.47676891258120, 0.48013796508757, 0.48348750325813, 
+            0.48681769615063, 0.49012871087564, 0.49342071262454, 
+            0.49669386469696, 0.49994832852779, 0.50318426371374, 
+            0.50640182803940, 0.50960117750290, 0.51278246634113, 
+            0.51594584705452, 0.51909147043139, 0.52221948557194, 
+            0.52533003991180, 0.52842327924518, 0.53149934774765, 
+            0.53455838799856, 0.53760054100306, 0.54062594621377, 
+            0.54363474155206, 0.54662706342906, 0.54960304676622, 
+            0.55256282501566, 0.55550653018002, 0.55843429283219, 
+            0.56134624213454, 0.56424250585795, 0.56712321040049, 
+            0.56998848080581, 0.57283844078121, 0.57567321271550, 
+            0.57849291769646, 0.58129767552811, 0.58408760474768, 
+            0.58686282264231, 0.58962344526546, 0.59236958745312, 
+            0.59510136283973, 0.59781888387383, 0.60052226183351, 
+            0.60321160684160, 0.60588702788061, 0.60854863280746, 
+            0.61119652836797, 0.61383082021115, 0.61645161290323, 
+            0.61905900994148, 0.62165311376788, 0.62423402578250, 
+            0.62680184635674, 0.62935667484632, 0.63189860960408, 
+            0.63442774799265, 0.63694418639685, 0.63944802023592, 
+            0.64193934397562, 0.64441825114007, 0.64688483432350, 
+            0.64933918520172, 0.65178139454352, 0.65421155222187, 
+            0.65662974722489, 0.65903606766677, 0.66143060079845, 
+            0.66381343301815, 0.66618464988179, 0.66854433611320, 
+            0.67089257561425, 0.67322945147475, 0.67555504598228, 
+            0.67786944063185, 0.68017271613539, 0.68246495243116, 
+            0.68474622869301, 0.68701662333945, 0.68927621404268, 
+            0.69152507773743, 0.69376329062966, 0.69599092820525, 
+            0.69820806523840, 0.70041477580004, 0.70261113326609, 
+            0.70479721032554, 0.70697307898854, 0.70913881059424, 
+            0.71129447581863, 0.71344014468223, 0.71557588655763, 
+            0.71770177017702, 0.71981786363950, 0.72192423441843, 
+            0.72402094936854, 0.72610807473301, 0.72818567615049, 
+            0.73025381866193, 0.73231256671739, 0.73436198418274, 
+            0.73640213434624, 0.73843307992511, 0.74045488307187, 
+            0.74246760538076,
+        };
+        const std::array<u16_fast, 16> noisePeriods {
+               4,    8,   16,   32,   64,   96,  128,  160, 
+             202,  254,  380,  508,  762, 1016, 2034, 4068,
+        };
+        const std::array<u8_fast, 32> lengths {
+             10, 254,  20,   2,  40,   4,  80,   6,
+            160,   8,  60,  10,  14,  12,  26,  14,
+             12,  16,  24,  18,  48,  20,  96,  22,
+            192,  24,  72,  26,  16,  28,  32,  30,
+        };
+        const std::array<u16_fast, 16> dmcPeriods {
+            428, 380, 340, 320, 286, 254, 226, 214, 
+            190, 160, 142, 128, 106,  84,  72,  54,
+        };
+
+        void pulseWrite0(Pulse& pulse, u8 data) {
+            pulse.envelope.timer.reload = data & 0x0F;
+            pulse.ignoreEnvelope = data & 0x10;
+            pulse.envelope.loop =
+                    pulse.lengthCounter.halt = data & 0x20;
+            pulse.duty = data >> 6;
+        };
+        void pulseWrite1(Pulse& pulse, u8 data) {
+            pulse.sweep.shiftCount = data & 0x07;
+            pulse.sweep.negate = data & 0x08;
+            pulse.sweep.timer.reload = (data >> 4) & 0x07;
+            pulse.sweep.enabled = data & 0x80;
+            pulse.sweep.reload = true;
+        };
+        void pulseWrite2(Pulse& pulse, u8 data) const {
+            pulse.sweep.period &= 0x0700;
+            pulse.sweep.period |= data;
+        };
+        void pulseWrite3(Pulse& pulse, u8 data) const {
+            pulse.sweep.period &= 0x00FF;
+            pulse.sweep.period |= (data & 0x07) << 8;
+            pulse.lengthCounter.counter.counter = lengths[data >> 3];
+            pulse.sequencePos.counter = 0;
+            pulse.envelope.start = true;
+        }
+
+    public:
+        Apu(Cpu& cpu)
+              : cpu{cpu} { 
+            //TODO: fix
+            pulse2.sweep.trueNegate = false;
+
+            for (u16 address : {0x4009, 0x400D, 0x4014, 0x4016}) {
+                cpu.memory.writeFunctions[address] = [] (
+                        MappedMemory<>* const memory,
+                        const u16 address,
+                        const u8 data) {
+                    //TODO: APU test mode / open bus
+                };
+                cpu.memory.readFunctions[address] = [] (
+                        MappedMemory<>* const memory,
+                        const u16 address) {
+                    //TODO: APU test mode / open bus
+                    return 0;
+                };
+            }
+            
+            //APU register mapping:
+            cpu.memory.writeFunctions[0x4000] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite0(pulse1, data);
+            };
+            cpu.memory.writeFunctions[0x4001] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite1(pulse1, data);
+            };
+            cpu.memory.writeFunctions[0x4002] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite2(pulse1, data);
+            };
+            cpu.memory.writeFunctions[0x4003] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite3(pulse1, data);
+            };
+            cpu.memory.writeFunctions[0x4004] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite0(pulse2, data);
+            };
+            cpu.memory.writeFunctions[0x4005] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite1(pulse2, data);
+            };
+            cpu.memory.writeFunctions[0x4006] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite2(pulse2, data);
+            };
+            cpu.memory.writeFunctions[0x4007] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulseWrite3(pulse2, data);
+            };
+            cpu.memory.writeFunctions[0x4008] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                triangle.linearCounter.counter.reload = data & 0x7F;
+                triangle.lengthCounter.halt = 
+                        triangle.linearCounter.control = data & 0x80;
+            };
+            cpu.memory.writeFunctions[0x400A] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                triangle.timer.reload &= 0x0700;
+                triangle.timer.reload |= data;
+            };
+            cpu.memory.writeFunctions[0x400B] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                triangle.timer.reload &= 0x00FF;
+                triangle.timer.reload |= (data & 0x07) << 8;
+                triangle.lengthCounter.counter.counter = lengths[data >> 3];
+                triangle.linearCounter.reload = true;
+            };
+            cpu.memory.writeFunctions[0x400C] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                noise.envelope.timer.reload = data & 0x0F;
+                noise.ignoreEnvelope = data & 0x10;
+                noise.envelope.loop = 
+                        noise.lengthCounter.halt = data & 0x20;
+            };
+            cpu.memory.writeFunctions[0x400E] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                noise.timer.reload = noisePeriods[data & 0x0F];
+                noise.mode = data & 0x80;
+            };
+            cpu.memory.writeFunctions[0x400F] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                noise.lengthCounter.counter.counter = lengths[data >> 3];
+                noise.envelope.start = true;
+            };
+            cpu.memory.writeFunctions[0x4010] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                dmc.timer.reload = dmcPeriods[data & 0x0F];
+                dmc.loop = data & 0x40;
+                dmc.irqEnabled = data & 0x80;
+            };
+            cpu.memory.writeFunctions[0x4011] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                //DISCREPANCY: This operation occasionally fails 
+                //on console, not going to emulate though
+                dmc.volume = data & 0x7F;
+            };
+            cpu.memory.writeFunctions[0x4012] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                dmc.startAddress = 0xC000 + (data << 6);
+            };
+            cpu.memory.writeFunctions[0x4013] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                dmc.bytesRemaining.counter = data << 4;
+            };
+            cpu.memory.writeFunctions[0x4015] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                pulse1.lengthCounter.enabled = data & 0x01;
+                pulse2.lengthCounter.enabled = data & 0x02;
+                triangle.lengthCounter.enabled = data & 0x04;
+                noise.lengthCounter.enabled = data & 0x08;
+                dmc.enabled = data & 0x10;
+                if (!dmc.enabled) {
+                    dmc.bytesRemaining.counter = -1;
+                }
+                cpu.releaseIrq(dmc.irqId);
+            };
+            cpu.memory.readFunctions[0x4015] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                u8 data;
+                setBit(data, 0, pulse1.lengthCounter.isNonZero());
+                setBit(data, 1, pulse2.lengthCounter.isNonZero());
+                setBit(data, 2, triangle.lengthCounter.isNonZero());
+                setBit(data, 3, noise.lengthCounter.isNonZero());
+                setBit(data, 4, dmc.bytesRemaining.counter >= 0);
+                //TODO: Open bus bit 5
+                setBit(data, 6, cpu.isPullingIrq(frameCounter.irqId));
+                setBit(data, 7, cpu.isPullingIrq(dmc.irqId));
+                
+                //TODO: Interrupt race condition where bits 6 and 7
+                //of data are set but IRQ is not released if the read 
+                //occurs on the same cycle the interrupt is generated:
+                cpu.releaseIrq(frameCounter.irqId);
+                cpu.releaseIrq(dmc.irqId);
+
+                return data;
+            };
+            cpu.memory.writeFunctions[0x4017] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                frameCounter.interruptInhibit = data & 0x40;
+                frameCounter.fourStep = !(data & 0x80);
+            };
+
+            /*
+            pulse1.envelope.timer.reload = 15;
+            pulse1.ignoreEnvelope = false;
+            pulse1.envelope.loop = true;
+            pulse1.lengthCounter.halt = true;
+            pulse1.lengthCounter.enabled = true;
+            pulse1.sweep.shiftCount = 7;
+            pulse1.sweep.negate = true;
+            pulse1.sweep.timer.reload = 7;
+            pulse1.sweep.enabled = true;
+            pulse1.sweep.period = 9; 
+            pulse1.lengthCounter.counter.counter = 100;
+            pulse1.duty = 3;
+            pulse1.sequencePos.counter = 0;
+            pulse1.envelope.start = true;
+            */
+        }
+
+        void tick() {
+            static bool odd {false};
+            triangle.tick();
+            frameCounter.tick();
+            dmc.tick();
+            noise.tick();
+            if ((odd = !odd)) {
+                pulse1.tick();
+                pulse2.tick();
+            }
+
+            debugOutput();
+        }
+
+        void debugOutput() const {
+            static u8_fast cycle {0};
+            if (cycle++ == 12) {
+                cycle = 0;
+                u8 out = (pulseOutput[
+                                pulse1.output()
+                              + pulse2.output()]
+                         + tndOutput[
+                                triangle.output()
+                              + noise.output()
+                              + dmc.output()]) * 0x100;
+                std::cout.write(reinterpret_cast<char*>(&out), 1); 
+            }
+        }
 };
 
