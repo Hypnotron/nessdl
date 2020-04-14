@@ -1235,6 +1235,7 @@ class Cpu {
 
         //TODO: remove 
         void debugOutput () const {
+            /*
             debug::log << "PC: " << std::setfill('0') << std::setw(4) 
                        << pc << "  ";
             debug::log << "OP: " << static_cast<int>(opcode) << "  ";
@@ -1245,6 +1246,7 @@ class Cpu {
             debug::log << "Y: " << static_cast<int>(y) << "  ";
             debug::log << "P: " << static_cast<int>(p) << "  ";
             debug::log << "SP: " << static_cast<int>(sp) << "  \n";
+            */
         }
 };
 
@@ -1252,7 +1254,7 @@ class Apu {
     //TODO: Power-up state
     private:
         struct LengthCounter {
-            bool enabled {false}; 
+            bool enabled {true}; 
             bool halt;
 
             Counter<s16_fast> counter{0, [&] () {
@@ -1314,11 +1316,9 @@ class Apu {
             }};
                      
             u16_fast targetPeriod() const {
-                //Compensate for CPU clock based 
-                //rather than APU clock based period:
                 s16_fast change = period >> shiftCount;
                 change = (negate ? -change : change);
-                change -= (period + change > 0) && negate && trueNegate; 
+                change -= (period + change >= 1) && negate && trueNegate; 
                 return period + change;
             }
 
@@ -1468,8 +1468,8 @@ class Apu {
             Apu& apu;
 
             s32_fast cycle {0};
-            bool fourStep;
-            bool interruptInhibit;
+            bool fourStep {true};
+            bool interruptInhibit {false};
             u8_fast irqId;
 
             FrameCounter(Apu& apu)
@@ -1521,7 +1521,7 @@ class Apu {
             u8_fast volume {0};
             bool irqEnabled;
             bool silence;
-            bool enabled;
+            bool enabled {false};
             bool loop;
             u8_fast shiftRegister;
             u8_fast sampleBuffer {0};
@@ -1914,6 +1914,24 @@ class Apu {
                     const u8 data) {
                 frameCounter.interruptInhibit = data & 0x40;
                 frameCounter.fourStep = !(data & 0x80);
+
+                frameCounter.cycle = -3;
+                frameCounter.cycle -= frameCounter.cycle & 0x01;
+
+                if (!frameCounter.fourStep) {
+                    pulse1.envelope.tick();
+                    pulse2.envelope.tick();
+                    triangle.linearCounter.tick();
+                    noise.envelope.tick();
+
+                    pulse1.sweep.tick();
+                    pulse2.sweep.tick();
+
+                    pulse1.lengthCounter.tick();
+                    pulse2.lengthCounter.tick();
+                    triangle.lengthCounter.tick();
+                    noise.lengthCounter.tick();
+                }
             };
 
             /*
@@ -1950,8 +1968,8 @@ class Apu {
             if (cycle++ == 12) {
                 cycle = 0;
                 u8 out = (pulseOutput[
-                                pulse1.output()
-                              + pulse2.output()]
+                               pulse1.output()
+                             + pulse2.output()]
                          + tndOutput[
                                 3 * triangle.output()
                               + 2 * noise.output()

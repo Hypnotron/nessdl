@@ -1,5 +1,5 @@
 # Roadmap
-+ APU
++ Fix APU bugs
 + PPU
 + Full system interface
 + Better cartridge loader (with extensive mapper support) 
