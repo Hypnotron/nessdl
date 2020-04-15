@@ -1235,7 +1235,6 @@ class Cpu {
 
         //TODO: remove 
         void debugOutput () const {
-            /*
             debug::log << "PC: " << std::setfill('0') << std::setw(4) 
                        << pc << "  ";
             debug::log << "OP: " << static_cast<int>(opcode) << "  ";
@@ -1246,7 +1245,6 @@ class Cpu {
             debug::log << "Y: " << static_cast<int>(y) << "  ";
             debug::log << "P: " << static_cast<int>(p) << "  ";
             debug::log << "SP: " << static_cast<int>(sp) << "  \n";
-            */
         }
 };
 
@@ -1254,7 +1252,7 @@ class Apu {
     //TODO: Power-up state
     private:
         struct LengthCounter {
-            bool enabled {true}; 
+            bool enabled {false}; 
             bool halt;
 
             Counter<s16_fast> counter{0, [&] () {
@@ -1262,23 +1260,23 @@ class Apu {
             }};
 
             void tick() {
-                if (!enabled) {
-                    counter.counter = 0;
-                }
-                else if (!halt) {
+                if (!halt) {
                     counter.tick();
                 }
             } 
 
-            bool isNonZero() const {
-                return enabled && counter.counter > 0;
-            } 
+            void toggle(const bool enable) {
+                enabled = enable;
+                if (!enabled) {
+                    counter.counter = 0;
+                }
+            }
         };
         struct LinearCounter {
             bool reload;
             bool control;       
             
-            Counter<s8_fast> counter{0, [&] () {
+            Counter<s16_fast> counter{0, [&] () {
                 counter.counter = 0;
             }};
 
@@ -1388,7 +1386,7 @@ class Apu {
                 if (
                         sequences[duty][sequencePos.counter] 
                      && sweep.targetPeriod() <= 0x7FF
-                     && lengthCounter.isNonZero()
+                     && lengthCounter.counter.counter > 0
                      && sweep.period >= 8) {
                     return ignoreEnvelope 
                           ? envelope.timer.reload 
@@ -1401,34 +1399,36 @@ class Apu {
         };
         struct Triangle {
             bool ascending {false};
-            u8_fast volume;
+            u8_fast volume {15};
 
             LinearCounter linearCounter;
             LengthCounter lengthCounter;
 
             Counter<s16_fast> timer{0, [&] () {
-                if (ascending) {
-                    if (volume == 15) {
-                        ascending = false;
-                    }
+                if (
+                        lengthCounter.counter.counter > 0 
+                     && linearCounter.isNonZero()) {
+                    if (ascending) {
+                        if (volume == 15) {
+                            ascending = false;
+                        }
+                        else {
+                            ++volume;
+                        }
+                    }    
                     else {
-                        ++volume;
-                    }
-                }    
-                else {
-                    if (volume == 0) {
-                        ascending = true;
-                    }
-                    else {
-                        --volume;
+                        if (volume == 0) {
+                            ascending = true;
+                        }
+                        else {
+                            --volume;
+                        }
                     }
                 }
             }};
 
             void tick() {
-                if (lengthCounter.isNonZero() && linearCounter.isNonZero()) {
-                    timer.tick();
-                }
+                timer.tick();
             }
 
             u8_fast output() const {
@@ -1454,7 +1454,7 @@ class Apu {
             }
 
             u8_fast output() const {
-                if (lengthCounter.isNonZero() && lfsr & 1) {
+                if (lengthCounter.counter.counter > 0 && lfsr & 1) {
                     return ignoreEnvelope 
                           ? envelope.timer.reload 
                           : envelope.output();
@@ -1479,14 +1479,18 @@ class Apu {
 
             void tick() {
                 ++cycle;
-                if (cycle == 7457 || cycle == 22371) {
+                if (
+                        (!fourStep && cycle == -2) 
+                     || cycle == 7457 
+                     || cycle == 22371) {
                     apu.pulse1.envelope.tick();
                     apu.pulse2.envelope.tick();
                     apu.triangle.linearCounter.tick();
                     apu.noise.envelope.tick();
                 }
                 if (
-                        cycle == 14913
+                        (!fourStep && cycle == -2)
+                     || cycle == 14913
                      || (fourStep && cycle == 29829)
                      || (!fourStep && cycle == 37281)) {
                     apu.pulse1.sweep.tick();
@@ -1497,7 +1501,7 @@ class Apu {
                     apu.triangle.lengthCounter.tick();
                     apu.noise.lengthCounter.tick();
                 }
-                if (fourStep && cycle >= 29828) {
+                if (fourStep && cycle >= 29829) {
                     apu.cpu.pullIrq(irqId);
                 }
 
@@ -1514,7 +1518,6 @@ class Apu {
             } 
         };
         struct Dmc {
-            //TODO: proper channel disable
             Apu& apu;
 
             u8_fast irqId;
@@ -1536,13 +1539,13 @@ class Apu {
             u8_fast emptySampleBuffer() {
                 u8_fast tmp {sampleBuffer};
                 if (enabled) {
-                    bytesRemaining.tick();
                     if (bytesRemaining.counter > -1) {
                         //TODO: stall cpu
                         sampleBuffer = apu.cpu.memory[address++];
                         address |= 0x8000;
                         return tmp;
                     }
+                    bytesRemaining.tick();
                 }
                 sampleBuffer = 0;
                 return tmp;
@@ -1588,6 +1591,13 @@ class Apu {
                     apu.cpu.releaseIrq(irqId);
                 }
                 timer.tick();
+            }
+
+            void toggle(const bool enable) {
+                enabled = enable;
+                if (!enabled) {
+                    bytesRemaining.counter = -1;
+                }
             }
 
             u8_fast output() const {
@@ -1725,7 +1735,9 @@ class Apu {
         void pulseWrite3(Pulse& pulse, u8 data) const {
             pulse.sweep.period &= 0x00FF;
             pulse.sweep.period |= (data & 0x07) << 8;
-            pulse.lengthCounter.counter.counter = lengths[data >> 3];
+            if (pulse.lengthCounter.enabled) {
+                pulse.lengthCounter.counter.counter = lengths[data >> 3];
+            }
             pulse.sequencePos.counter = 0;
             pulse.envelope.start = true;
         }
@@ -1804,8 +1816,8 @@ class Apu {
                     const u16 address,
                     const u8 data) {
                 triangle.linearCounter.counter.reload = data & 0x7F;
-                triangle.lengthCounter.halt = 
-                        triangle.linearCounter.control = data & 0x80;
+                triangle.lengthCounter.halt 
+                      = triangle.linearCounter.control = data & 0x80;
             };
             cpu.memory.writeFunctions[0x400A] = [&] (
                     MappedMemory<>* const memory,
@@ -1820,7 +1832,9 @@ class Apu {
                     const u8 data) {
                 triangle.timer.reload &= 0x00FF;
                 triangle.timer.reload |= (data & 0x07) << 8;
-                triangle.lengthCounter.counter.counter = lengths[data >> 3];
+                if (triangle.lengthCounter.enabled) {
+                    triangle.lengthCounter.counter.counter = lengths[data >> 3];
+                }
                 triangle.linearCounter.reload = true;
             };
             cpu.memory.writeFunctions[0x400C] = [&] (
@@ -1829,8 +1843,8 @@ class Apu {
                     const u8 data) {
                 noise.envelope.timer.reload = data & 0x0F;
                 noise.ignoreEnvelope = data & 0x10;
-                noise.envelope.loop = 
-                        noise.lengthCounter.halt = data & 0x20;
+                noise.envelope.loop
+                      = noise.lengthCounter.halt = data & 0x20;
             };
             cpu.memory.writeFunctions[0x400E] = [&] (
                     MappedMemory<>* const memory,
@@ -1843,7 +1857,9 @@ class Apu {
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
-                noise.lengthCounter.counter.counter = lengths[data >> 3];
+                if (noise.lengthCounter.enabled) {
+                    noise.lengthCounter.counter.counter = lengths[data >> 3];
+                }
                 noise.envelope.start = true;
             };
             cpu.memory.writeFunctions[0x4010] = [&] (
@@ -1872,30 +1888,29 @@ class Apu {
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
-                dmc.bytesRemaining.counter = data << 4;
+                dmc.bytesRemaining.counter 
+                      = dmc.bytesRemaining.reload = data << 4;
             };
             cpu.memory.writeFunctions[0x4015] = [&] (
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
-                pulse1.lengthCounter.enabled = data & 0x01;
-                pulse2.lengthCounter.enabled = data & 0x02;
-                triangle.lengthCounter.enabled = data & 0x04;
-                noise.lengthCounter.enabled = data & 0x08;
-                dmc.enabled = data & 0x10;
-                if (!dmc.enabled) {
-                    dmc.bytesRemaining.counter = -1;
-                }
+                pulse1.lengthCounter.toggle(data & 0x01);
+                pulse2.lengthCounter.toggle(data & 0x02);
+                triangle.lengthCounter.toggle(data & 0x04);
+                noise.lengthCounter.toggle(data & 0x08);
+                dmc.toggle(data & 0x10);
+
                 cpu.releaseIrq(dmc.irqId);
             };
             cpu.memory.readFunctions[0x4015] = [&] (
                     MappedMemory<>* const memory,
                     const u16 address) {
                 u8 data;
-                setBit(data, 0, pulse1.lengthCounter.isNonZero());
-                setBit(data, 1, pulse2.lengthCounter.isNonZero());
-                setBit(data, 2, triangle.lengthCounter.isNonZero());
-                setBit(data, 3, noise.lengthCounter.isNonZero());
+                setBit(data, 0, pulse1.lengthCounter.counter.counter > 0);
+                setBit(data, 1, pulse2.lengthCounter.counter.counter > 0);
+                setBit(data, 2, triangle.lengthCounter.counter.counter > 0);
+                setBit(data, 3, noise.lengthCounter.counter.counter > 0);
                 setBit(data, 4, dmc.bytesRemaining.counter >= 0);
                 //TODO: Open bus bit 5
                 setBit(data, 6, cpu.isPullingIrq(frameCounter.irqId));
@@ -1917,21 +1932,6 @@ class Apu {
 
                 frameCounter.cycle = -3;
                 frameCounter.cycle -= frameCounter.cycle & 0x01;
-
-                if (!frameCounter.fourStep) {
-                    pulse1.envelope.tick();
-                    pulse2.envelope.tick();
-                    triangle.linearCounter.tick();
-                    noise.envelope.tick();
-
-                    pulse1.sweep.tick();
-                    pulse2.sweep.tick();
-
-                    pulse1.lengthCounter.tick();
-                    pulse2.lengthCounter.tick();
-                    triangle.lengthCounter.tick();
-                    noise.lengthCounter.tick();
-                }
             };
 
             /*
@@ -1974,7 +1974,7 @@ class Apu {
                                 3 * triangle.output()
                               + 2 * noise.output()
                               + dmc.output()]) * 0x100;
-                std::cout.write(reinterpret_cast<char*>(&out), 1); 
+                //std::cout.write(reinterpret_cast<char*>(&out), 1); 
             }
         }
 };

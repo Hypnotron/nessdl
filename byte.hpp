@@ -89,7 +89,7 @@ s64 toSigned(u64 value) {
 }
 
 template <typename DataType>
-void setBit(DataType& data, u8_fast bit, bool value) {
+inline void setBit(DataType& data, u8_fast bit, bool value) {
     data &= ~(1 << bit);
     data |= value << bit;
 }
