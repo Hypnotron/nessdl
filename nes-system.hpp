@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "debug.hpp"
+#include "byte.hpp"
 #include "counter.hpp"
 #include "ines.hpp"
 #include "2A03.hpp"
@@ -49,8 +50,8 @@ class Nes {
             cpu.reset();
         }
 
-        void tick() {
-            cpuClock.tick();
+        void tick(const u8_fast count = 1) {
+            cpuClock.tick(count);
         }
 
         //TODO: remove

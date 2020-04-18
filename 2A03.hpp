@@ -1480,17 +1480,18 @@ class Apu {
             void tick() {
                 ++cycle;
                 if (
-                        (!fourStep && cycle == -2) 
-                     || cycle == 7457 
-                     || cycle == 22371) {
+                        cycle == 7457 
+                     || cycle == 14913
+                     || cycle == 22371
+                     || (fourStep && cycle == 29829)
+                     || (!fourStep && cycle == 37281)) {
                     apu.pulse1.envelope.tick();
                     apu.pulse2.envelope.tick();
                     apu.triangle.linearCounter.tick();
                     apu.noise.envelope.tick();
                 }
                 if (
-                        (!fourStep && cycle == -2)
-                     || cycle == 14913
+                        cycle == 14913
                      || (fourStep && cycle == 29829)
                      || (!fourStep && cycle == 37281)) {
                     apu.pulse1.sweep.tick();
@@ -1501,7 +1502,7 @@ class Apu {
                     apu.triangle.lengthCounter.tick();
                     apu.noise.lengthCounter.tick();
                 }
-                if (fourStep && cycle >= 29829) {
+                if (fourStep && cycle >= 29828) {
                     apu.cpu.pullIrq(irqId);
                 }
 
@@ -1522,12 +1523,14 @@ class Apu {
 
             u8_fast irqId;
             u8_fast volume {0};
-            bool irqEnabled;
+            bool irqEnabled {true};
             bool silence;
             bool enabled {false};
+            bool finished; 
             bool loop;
             u8_fast shiftRegister;
-            u8_fast sampleBuffer {0};
+            //-1 indicates an empty sample buffer:
+            s16_fast sampleBuffer {-1};
             u16_fast startAddress;
             u16_fast address;
 
@@ -1536,27 +1539,29 @@ class Apu {
                 irqId = apu.cpu.connectIrq();
             }
 
-            u8_fast emptySampleBuffer() {
-                u8_fast tmp {sampleBuffer};
+            s16_fast emptySampleBuffer() {
+                s16_fast tmp {sampleBuffer};
                 if (enabled) {
-                    if (bytesRemaining.counter > -1) {
+                    if (!finished) {
                         //TODO: stall cpu
                         sampleBuffer = apu.cpu.memory[address++];
                         address |= 0x8000;
-                        return tmp;
                     }
                     bytesRemaining.tick();
                 }
-                sampleBuffer = 0;
+                else {
+                    sampleBuffer = -1;
+                }
                 return tmp;
             }
 
-            Counter<s32_fast> bytesRemaining{0, [&] () {
+            Counter<s16_fast> bytesRemaining{0, [&] () {
                 if (loop) {
                     address = startAddress;
                 }
                 else {
-                    bytesRemaining.counter = -1;
+                    finished = true;
+                    bytesRemaining.counter = 0;
                     if (irqEnabled) {
                         apu.cpu.pullIrq(irqId);
                     }
@@ -1564,8 +1569,8 @@ class Apu {
             }};
 
             Counter<s8_fast> bitsRemaining{7, [&] () {
-                u8_fast tmp {emptySampleBuffer()};
-                if (tmp == 0) {
+                s16_fast tmp {emptySampleBuffer()};
+                if (tmp == -1) {
                     silence = true;
                 }
                 else {
@@ -1587,17 +1592,20 @@ class Apu {
             }};
 
             void tick() {
+                timer.tick();
                 if (!irqEnabled) {
                     apu.cpu.releaseIrq(irqId);
                 }
-                timer.tick();
             }
 
             void toggle(const bool enable) {
                 enabled = enable;
-                if (!enabled) {
-                    bytesRemaining.counter = -1;
-                }
+                bytesRemaining.counter = enabled 
+                      ? (finished
+                            ? bytesRemaining.reload 
+                            : bytesRemaining.counter)
+                      : 0;
+                finished = !enabled; 
             }
 
             u8_fast output() const {
@@ -1888,8 +1896,7 @@ class Apu {
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
-                dmc.bytesRemaining.counter 
-                      = dmc.bytesRemaining.reload = data << 4;
+                dmc.bytesRemaining.reload = data << 4; 
             };
             cpu.memory.writeFunctions[0x4015] = [&] (
                     MappedMemory<>* const memory,
@@ -1911,7 +1918,7 @@ class Apu {
                 setBit(data, 1, pulse2.lengthCounter.counter.counter > 0);
                 setBit(data, 2, triangle.lengthCounter.counter.counter > 0);
                 setBit(data, 3, noise.lengthCounter.counter.counter > 0);
-                setBit(data, 4, dmc.bytesRemaining.counter >= 0);
+                setBit(data, 4, !dmc.finished);
                 //TODO: Open bus bit 5
                 setBit(data, 6, cpu.isPullingIrq(frameCounter.irqId));
                 setBit(data, 7, cpu.isPullingIrq(dmc.irqId));
@@ -1932,6 +1939,21 @@ class Apu {
 
                 frameCounter.cycle = -3;
                 frameCounter.cycle -= frameCounter.cycle & 0x01;
+
+                if (!frameCounter.fourStep) {
+                    pulse1.envelope.tick();
+                    pulse2.envelope.tick();
+                    triangle.linearCounter.tick();
+                    noise.envelope.tick();
+
+                    pulse1.sweep.tick();
+                    pulse2.sweep.tick();
+
+                    pulse1.lengthCounter.tick();
+                    pulse2.lengthCounter.tick();
+                    triangle.lengthCounter.tick();
+                    noise.lengthCounter.tick();
+                }
             };
 
             /*
@@ -1974,7 +1996,7 @@ class Apu {
                                 3 * triangle.output()
                               + 2 * noise.output()
                               + dmc.output()]) * 0x100;
-                //std::cout.write(reinterpret_cast<char*>(&out), 1); 
+                std::cout.write(reinterpret_cast<char*>(&out), 1); 
             }
         }
 };

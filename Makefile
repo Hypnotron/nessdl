@@ -1,7 +1,7 @@
 TARGET = $(wildcard *.cpp)
 
 CPPFLAGS += -std=c++11 -Wno-unused-value 
-LDFLAGS = 
+LDFLAGS += 
 
 LINUX_CC = clang++
 LINUX_CPPFLAGS += -DOS_LINUX $(shell sdl2-config --cflags)
@@ -14,7 +14,7 @@ WIN_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,-Bstatic -lstdc++ -lpthread 
 
 MAC_CC = /home/main/src/osxcross/target/bin/o64-clang++ 
 MAC_CPPFLAGS += -DOS_MACOS 
-MAC_LDFLAGS += -F./build -framework SDL2 -rpath @executable_path/../Frameworks 
+MAC_LDFLAGS += -stdlib=libc++ -F./build -framework SDL2 -rpath @executable_path/../Frameworks 
 
 linux: $(TARGET)
 	$(LINUX_CC) -o build/nessdl $^ $(CPPFLAGS) $(LINUX_CPPFLAGS) $(LDFLAGS) $(LINUX_LDFLAGS)
