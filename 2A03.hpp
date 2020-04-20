@@ -106,6 +106,7 @@ class Cpu {
         const std::function<void()> ANC = [&] () {
             a &= value;
             setBit(p, CARRY, a & 0x80);
+            setBit(p, ZERO, a == 0); 
             setBit(p, NEGATIVE, a & 0x80);
         };
         const std::function<void()> BPL = [&] () {
@@ -113,16 +114,6 @@ class Cpu {
         };
         const std::function<void()> CLC = [&] () {
             p &= ~(1 << CARRY);
-
-            //Due to the existence of immediate (accumulator) 
-            //versions of operations that typically operate 
-            //on value, a is loaded with value after the
-            //completion of said operations to avoid
-            //rewriting them entirely. Because of this,
-            //all immediate operations must store whatever
-            //a is to be loaded with into value in order
-            //to avoid clobbering a's previous value.
-            value = a;
         };
         const std::function<void()> AND = [&] () {
             a &= value;
@@ -155,7 +146,6 @@ class Cpu {
         };
         const std::function<void()> SEC = [&] () {
             p |= 1 << CARRY;
-            value = a;
         };
         const std::function<void()> EOR = [&] () {
             a ^= value;
@@ -187,7 +177,6 @@ class Cpu {
         };
         const std::function<void()> CLI = [&] () {
             p &= ~(1 << INTERRUPT_DISABLE);
-            value = a;
         };
         const std::function<void()> ROR = [&] () {
             u8_fast oldCarry {static_cast<u8_fast>(p >> CARRY & 0x01)};
@@ -213,13 +202,15 @@ class Cpu {
             value = a;
             ROR();
             a = value;
+            
+            setBit(p, CARRY, a & 0x40);
+            setBit(p, OVERFLOW, ((a >> 5) ^ (a >> 6)) & 0x01);
         }; 
         const std::function<void()> BVS = [&] () {
             value = p >> OVERFLOW & 0x01; 
         };
         const std::function<void()> SEI = [&] () {
             p |= 1 << INTERRUPT_DISABLE;
-            value = a;
         };
         const std::function<void()> STA = [&] () {
             value = a;
@@ -237,11 +228,9 @@ class Cpu {
             --y;
             setBit(p, ZERO, y == 0);
             setBit(p, NEGATIVE, y & 0x80);
-
-            value = a;
         };
         const std::function<void()> TXA = [&] () {
-            value = a = x;
+            value = x;
             setBit(p, ZERO, x == 0);
             setBit(p, NEGATIVE, x & 0x80);
         };
@@ -249,11 +238,12 @@ class Cpu {
             value = !(p >> CARRY & 0x01);
         };
         const std::function<void()> TYA = [&] () {
-            value = a = y;
+            value = y;
+            setBit(p, ZERO, y == 0);
+            setBit(p, NEGATIVE, y & 0x80);
         };
         const std::function<void()> TXS = [&] () {
             sp = x;
-            value = a;
         };
         const std::function<void()> LDY = [&] () {
             y = value;
@@ -279,29 +269,22 @@ class Cpu {
             y = a;
             setBit(p, ZERO, y == 0);
             setBit(p, NEGATIVE, y & 0x80);
-
-            value = a;
         };
         const std::function<void()> TAX = [&] () {
             x = a;
             setBit(p, ZERO, x == 0);
             setBit(p, NEGATIVE, x & 0x80);
-
-            value = a;
         };
         const std::function<void()> BCS = [&] () {
             value = p >> CARRY & 0x01;
         };
         const std::function<void()> CLV = [&] () {
             p &= ~(1 << OVERFLOW);
-            value = a;
         };
         const std::function<void()> TSX = [&] () {
             x = sp;
             setBit(p, ZERO, x == 0);
             setBit(p, NEGATIVE, x & 0x80);
-
-            value = a;
         };
         const std::function<void()> LAS = [&] () {
             a = x = (sp &= value);
@@ -330,30 +313,22 @@ class Cpu {
             ++y;
             setBit(p, ZERO, y == 0);
             setBit(p, NEGATIVE, y & 0x80);
-        
-            value = a;
         };
         const std::function<void()> INX = [&] () {
             ++x;
             setBit(p, ZERO, x == 0);
             setBit(p, NEGATIVE, x & 0x80);
-        
-            value = a;
         };
         const std::function<void()> CLD = [&] () {
             p &= ~(1 << DECIMAL);
-            value = a;
         };
         const std::function<void()> SED = [&] () {
             p |= 1 << DECIMAL;
-            value = a;
         };
         const std::function<void()> DEX = [&] () {
             --x;
             setBit(p, ZERO, x == 0);
             setBit(p, NEGATIVE, x & 0x80);
-
-            value = a;
         };
         const std::function<void()> DCP = [&] () {
             --value;
@@ -567,6 +542,7 @@ class Cpu {
             },
             /*6: Implied timing */ {
                 [&] () {
+                    value = a;
                     doOp();
                     a = value;
                 },
@@ -1467,7 +1443,7 @@ class Apu {
         struct FrameCounter {
             Apu& apu;
 
-            s32_fast cycle {0};
+            s32_fast cycle {1};
             bool fourStep {true};
             bool interruptInhibit {false};
             u8_fast irqId;
@@ -1719,7 +1695,7 @@ class Apu {
         };
         const std::array<u16_fast, 16> dmcPeriods {
             427, 379, 339, 319, 287, 253, 225, 213, 
-            189, 159, 141, 127, 105,  83,  71,  53,
+            189, 159, 139, 127, 105,  83,  71,  53,
         };
 
         void pulseWrite0(Pulse& pulse, u8 data) {
@@ -1937,8 +1913,9 @@ class Apu {
                 frameCounter.interruptInhibit = data & 0x40;
                 frameCounter.fourStep = !(data & 0x80);
 
-                frameCounter.cycle = -3;
-                frameCounter.cycle -= frameCounter.cycle & 0x01;
+                //TODO: resolve
+                frameCounter.cycle = -4;
+                frameCounter.cycle += frameCounter.cycle & 0x01;
 
                 if (!frameCounter.fourStep) {
                     pulse1.envelope.tick();
