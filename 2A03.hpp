@@ -1443,7 +1443,7 @@ class Apu {
         struct FrameCounter {
             Apu& apu;
 
-            s32_fast cycle {1};
+            s32_fast cycle {0};
             bool fourStep {true};
             bool interruptInhibit {false};
             u8_fast irqId;
@@ -1515,20 +1515,13 @@ class Apu {
                 irqId = apu.cpu.connectIrq();
             }
 
-            s16_fast emptySampleBuffer() {
-                s16_fast tmp {sampleBuffer};
-                if (enabled) {
-                    if (!finished) {
-                        //TODO: stall cpu
-                        sampleBuffer = apu.cpu.memory[address++];
-                        address |= 0x8000;
-                    }
+            void fillSampleBuffer() {
+                if (sampleBuffer == -1 && enabled && !finished) {
+                    //TODO: stall cpu
+                    sampleBuffer = apu.cpu.memory[address++];
+                    address |= 0x8000;
                     bytesRemaining.tick();
                 }
-                else {
-                    sampleBuffer = -1;
-                }
-                return tmp;
             }
 
             Counter<s16_fast> bytesRemaining{0, [&] () {
@@ -1545,13 +1538,14 @@ class Apu {
             }};
 
             Counter<s8_fast> bitsRemaining{7, [&] () {
-                s16_fast tmp {emptySampleBuffer()};
-                if (tmp == -1) {
+                if (sampleBuffer == -1) {
                     silence = true;
                 }
                 else {
                     silence = false;
-                    shiftRegister = tmp; 
+                    shiftRegister = sampleBuffer;
+                    sampleBuffer = -1;
+                    fillSampleBuffer();
                 }
             }};
             Counter<s16_fast> timer{0, [&] () {
@@ -1576,12 +1570,15 @@ class Apu {
 
             void toggle(const bool enable) {
                 enabled = enable;
-                bytesRemaining.counter = enabled 
-                      ? (finished
-                            ? bytesRemaining.reload 
-                            : bytesRemaining.counter)
-                      : 0;
+                if (enabled && finished) {
+                    address = startAddress;
+                    bytesRemaining.counter = bytesRemaining.reload;
+                }
+                else if (!enabled) { 
+                    bytesRemaining.counter = 0;
+                }
                 finished = !enabled; 
+                fillSampleBuffer();
             }
 
             u8_fast output() const {
@@ -1592,6 +1589,7 @@ class Apu {
         Cpu& cpu;
 
         FrameCounter frameCounter{*this};
+        u32_fast cycle {0};
 
         Pulse pulse1; 
         Pulse pulse2;
@@ -1694,8 +1692,8 @@ class Apu {
             192,  24,  72,  26,  16,  28,  32,  30,
         };
         const std::array<u16_fast, 16> dmcPeriods {
-            427, 379, 339, 319, 287, 253, 225, 213, 
-            189, 159, 139, 127, 105,  83,  71,  53,
+            427, 379, 339, 319, 285, 253, 225, 213, 
+            189, 159, 141, 127, 105,  83,  71,  53,
         };
 
         void pulseWrite0(Pulse& pulse, u8 data) {
@@ -1883,7 +1881,7 @@ class Apu {
                 triangle.lengthCounter.toggle(data & 0x04);
                 noise.lengthCounter.toggle(data & 0x08);
                 dmc.toggle(data & 0x10);
-
+                
                 cpu.releaseIrq(dmc.irqId);
             };
             cpu.memory.readFunctions[0x4015] = [&] (
@@ -1894,7 +1892,8 @@ class Apu {
                 setBit(data, 1, pulse2.lengthCounter.counter.counter > 0);
                 setBit(data, 2, triangle.lengthCounter.counter.counter > 0);
                 setBit(data, 3, noise.lengthCounter.counter.counter > 0);
-                setBit(data, 4, !dmc.finished);
+                //TODO: resolve
+                setBit(data, 4, dmc.bytesRemaining.counter > 0);
                 //TODO: Open bus bit 5
                 setBit(data, 6, cpu.isPullingIrq(frameCounter.irqId));
                 setBit(data, 7, cpu.isPullingIrq(dmc.irqId));
@@ -1914,8 +1913,8 @@ class Apu {
                 frameCounter.fourStep = !(data & 0x80);
 
                 //TODO: resolve
-                frameCounter.cycle = -4;
-                frameCounter.cycle += frameCounter.cycle & 0x01;
+                frameCounter.cycle = -3;
+                frameCounter.cycle -= cycle & 0x01;
 
                 if (!frameCounter.fourStep) {
                     pulse1.envelope.tick();
@@ -1960,12 +1959,14 @@ class Apu {
             frameCounter.tick();
 
             debugOutput();
+
+            ++cycle;
         }
 
         void debugOutput() const {
-            static u8_fast cycle {0};
-            if (cycle++ == 12) {
-                cycle = 0;
+            static u8_fast outCycle {0};
+            if (outCycle++ == 31) {
+                outCycle = 0;
                 u8 out = (pulseOutput[
                                pulse1.output()
                              + pulse2.output()]
