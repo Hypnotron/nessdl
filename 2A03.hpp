@@ -1506,7 +1506,7 @@ class Apu {
             bool loop;
             u8_fast shiftRegister;
             //-1 indicates an empty sample buffer:
-            s16_fast sampleBuffer {-1};
+            s16_fast sampleBuffer {0};
             u16_fast startAddress;
             u16_fast address;
 
@@ -1516,7 +1516,7 @@ class Apu {
             }
 
             void fillSampleBuffer() {
-                if (sampleBuffer == -1 && enabled && !finished) {
+                if (sampleBuffer == -1 && !finished) {
                     //TODO: stall cpu
                     sampleBuffer = apu.cpu.memory[address++];
                     address |= 0x8000;
@@ -1545,7 +1545,6 @@ class Apu {
                     silence = false;
                     shiftRegister = sampleBuffer;
                     sampleBuffer = -1;
-                    fillSampleBuffer();
                 }
             }};
             Counter<s16_fast> timer{0, [&] () {
@@ -1562,10 +1561,8 @@ class Apu {
             }};
 
             void tick() {
+                fillSampleBuffer();
                 timer.tick();
-                if (!irqEnabled) {
-                    apu.cpu.releaseIrq(irqId);
-                }
             }
 
             void toggle(const bool enable) {
@@ -1578,7 +1575,6 @@ class Apu {
                     bytesRemaining.counter = 0;
                 }
                 finished = !enabled; 
-                fillSampleBuffer();
             }
 
             u8_fast output() const {
@@ -1851,6 +1847,9 @@ class Apu {
                 dmc.timer.reload = dmcPeriods[data & 0x0F];
                 dmc.loop = data & 0x40;
                 dmc.irqEnabled = data & 0x80;
+                if (!dmc.irqEnabled) {
+                    cpu.releaseIrq(dmc.irqId);
+                }
             };
             cpu.memory.writeFunctions[0x4011] = [&] (
                     MappedMemory<>* const memory,
@@ -1892,8 +1891,7 @@ class Apu {
                 setBit(data, 1, pulse2.lengthCounter.counter.counter > 0);
                 setBit(data, 2, triangle.lengthCounter.counter.counter > 0);
                 setBit(data, 3, noise.lengthCounter.counter.counter > 0);
-                //TODO: resolve
-                setBit(data, 4, dmc.bytesRemaining.counter > 0);
+                setBit(data, 4, !dmc.finished); 
                 //TODO: Open bus bit 5
                 setBit(data, 6, cpu.isPullingIrq(frameCounter.irqId));
                 setBit(data, 7, cpu.isPullingIrq(dmc.irqId));
