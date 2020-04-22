@@ -8,7 +8,7 @@ LINUX_CPPFLAGS += -DOS_LINUX $(shell sdl2-config --cflags)
 LINUX_LDFLAGS += $(shell sdl2-config --libs)
 
 WIN_CC = x86_64-w64-mingw32-c++
-WIN_CPPFLAGS += -DOS_WINDOWS 
+WIN_CPPFLAGS += -DOS_WINDOWS
 WIN_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,-Bstatic -lstdc++ -lpthread \
                 -Wl,-Bdynamic -lmingw32 -lSDL2main -lSDL2 
 
@@ -20,7 +20,7 @@ linux: $(TARGET)
 	$(LINUX_CC) -o build/nessdl $^ $(CPPFLAGS) $(LINUX_CPPFLAGS) $(LDFLAGS) $(LINUX_LDFLAGS)
 
 windows: $(TARGET)
-	$(WIN_CC) -o build/nessdl.exe $^ $(CPPFLAGS) $(WIN_CPPFLAGS) $(LDFLAGS) $(WIN_LDFLAGS)
+	$(WIN_CC) -o build/nessdl.exe $^ $(CPPFLAGS) $(WIN_CPPFLAGS) $(LDFLAGS) $(WIN_LDFLAGS) 
 
 macos: $(TARGET)
 	$(MAC_CC) -o build/Nessdl.app/Contents/MacOS/nessdl.tool $^ $(CPPFLAGS) $(MAC_CPPFLAGS) $(LDFLAGS) $(MAC_LDFLAGS)

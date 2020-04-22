@@ -1,5 +1,5 @@
 #pragma once
-#include <string>
+#include <SDL2/SDL.h>
 #include "debug.hpp"
 #include "byte.hpp"
 #include "counter.hpp"
@@ -10,15 +10,11 @@ class Nes {
     //TODO: PPU
     private:
         Cpu cpu;
-        Apu apu{cpu};
+        Apu apu;
         
-        Counter<s8_fast> cpuClock{11, [&] () {
-            cpu.tick();
-            apu.tick();
-        }};
-
     public:
-        Nes() {
+        Nes(SDL_AudioDeviceID& audioDevice) 
+              : apu{cpu, audioDevice} {
             cpu.memory.readFunctions[0x1FFF] = [] (
                     MappedMemory<>* const memory, 
                     const u16 address) {
@@ -41,6 +37,9 @@ class Nes {
                     const u16 address,
                     const u8 data) {
             };
+
+            cpu.timer.reload = 11;
+            apu.timer.reload = 11;
         }
         
         template <typename RomType>
@@ -51,7 +50,8 @@ class Nes {
         }
 
         void tick(const u8_fast count = 1) {
-            cpuClock.tick(count);
+            cpu.tick(count);
+            apu.tick(count);
         }
 
         //TODO: remove
