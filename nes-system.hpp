@@ -1,5 +1,5 @@
 #pragma once
-#include <SDL2/SDL.h>
+#include <functional>
 #include "debug.hpp"
 #include "byte.hpp"
 #include "counter.hpp"
@@ -10,11 +10,13 @@ class Nes {
     //TODO: PPU
     private:
         Cpu cpu;
-        Apu apu;
+        Apu apu {cpu};
         
     public:
-        Nes(SDL_AudioDeviceID& audioDevice) 
-              : apu{cpu, audioDevice} {
+        std::function<void(u8 sample)>& audioOutputFunction {
+                apu.outputFunction};
+
+        Nes() {
             cpu.memory.readFunctions[0x1FFF] = [] (
                     MappedMemory<>* const memory, 
                     const u16 address) {
@@ -46,20 +48,26 @@ class Nes {
         void load(RomType& rom) {
             MappedMemory<> dummyPpuMemory(0xFFFF);
             ines::load(rom, cpu.memory, dummyPpuMemory); 
+        }
+
+        void reset() {
             cpu.reset();
+            apu.reset();
         }
 
-        void tick(const u8_fast count = 1) {
-            cpu.tick(count);
-            apu.tick(count);
+        void tick(const u8_fast ticks = 1) {
+            cpu.tick(ticks);
+            apu.tick(ticks);
         }
 
-        //TODO: remove
-        void ramdump() {
-            std::ofstream ramdumpFile {"ram.dump",
+        void ramdump(const char* const filename) {
+            std::ofstream ramdumpFile {filename,
                     std::ofstream::binary | std::ofstream::trunc};
-            ramdumpFile.seekp(0, std::ios::beg);
-            ramdumpFile.write(reinterpret_cast<char*>(cpu.memory.memory.data()), cpu.memory.memory.size());
+            auto ptr {cpu.memory.begin()};
+            for (u32_fast i {0}; i <= 0xFFFF; ++i, ++ptr) {
+                u8 byte {*ptr};
+                ramdumpFile.write(reinterpret_cast<char*>(&byte), 1);
+            }
             ramdumpFile.close();
         }
 };

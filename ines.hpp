@@ -10,6 +10,16 @@
 
 namespace ines {
     template <typename RomType>
+    bool isValid(RomType& rom) {
+        std::array<u8, 4> magic;
+        rom.read(reinterpret_cast<char*>(magic.begin()), 4);
+        return 
+                readBytes<4, u32, Endianness::BIG>(magic.begin())
+             == 0x4E45531A; 
+        //        N.E.S... 
+    }
+
+    template <typename RomType>
     void load(
             RomType& rom,
             MappedMemory<>& cpuMemory,
@@ -20,12 +30,10 @@ namespace ines {
             FOUR_SCREEN,
         };
 
+        rom.seekg(0, std::ios::beg);
+
         std::array<u8, 0x10> header;
         rom.read(reinterpret_cast<char*>(header.begin()), 0x10);
-
-        //Check NES file magic:
-        assert((readBytes<4, u32, Endianness::BIG>(header.begin())
-                == 0x4E45531A && "Bad NES header"));
 
         u8_fast prgSize {header[4]};
         u8_fast chrSize {header[5]};

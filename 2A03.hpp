@@ -3,14 +3,12 @@
 #include <array>
 #include <vector>
 #include <functional>
-#include <SDL2/SDL.h>
 #include "debug.hpp"
 #include "byte.hpp"
 #include "counter.hpp"
 #include "memory.hpp"
 
 class Cpu {
-    //TODO: Power-up state
     private:
         //General-purpose registers:
         u8 a {0}, x {0}, y {0};
@@ -61,7 +59,10 @@ class Cpu {
         }; 
         //If lambda returns true, interrupts 
         //will be polled at the end of a tick:
-        std::function<bool()> interruptCondition;
+        std::function<bool()> interruptCondition; 
+
+        //Tick counter:
+        u32_fast cycle {0};
 
         //General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
@@ -1158,7 +1159,7 @@ class Cpu {
     public:
         //Memory:
         MappedMemory<> memory{0};
-        
+
         void reset() {
             interruptCondition = defaultInterruptCondition;
             nmiPending = false;
@@ -1174,12 +1175,13 @@ class Cpu {
             instrCycle = instrCycles[0].end() - 1;
             instrCycleStep = 1;
 
+            timer.counter += 7 * (timer.reload + 1) - 1;
 
             //TODO: remove
             debug::log << std::hex;
         } 
 
-        Counter<s8_fast> timer{0, [&] () {
+        Counter<s16_fast> timer{0, [&] () {
             (*instrCycle)();
             instrCycle += instrCycleStep;
             instrCycleStep = 1;
@@ -1187,11 +1189,13 @@ class Cpu {
             if (interruptCondition()) {
                 pollInterrupts();
             }
+
+            ++cycle;
         }};
 
 
-        void tick(const u8_fast count = 1) {
-            timer.tick(count);
+        void tick(const u8_fast ticks = 1) {
+            timer.tick(ticks);
         }
 
         u8_fast connectIrq() {
@@ -1228,14 +1232,15 @@ class Cpu {
 };
 
 class Apu {
-    //TODO: Power-up state
     private:
+        //Sound units belonging to individual channels:
         struct LengthCounter {
             bool enabled {false}; 
-            bool halt;
+            bool halt {false};
 
             Counter<s16_fast> counter{0, [&] () {
                  counter.counter = 0;
+                 return true;
             }};
 
             void tick() {
@@ -1252,11 +1257,12 @@ class Apu {
             }
         };
         struct LinearCounter {
-            bool reload;
-            bool control;       
+            bool reload {true};
+            bool control {false};       
             
             Counter<s16_fast> counter{0, [&] () {
                 counter.counter = 0;
+                return true;
             }};
 
             void tick() {
@@ -1276,10 +1282,10 @@ class Apu {
         };
         struct Sweep {
             bool reload;
-            bool enabled;
-            bool negate;
+            bool enabled {false};
+            bool negate {false};
             bool trueNegate {true};
-            u8_fast shiftCount;
+            u8_fast shiftCount {0};
             u16_fast period {0};
 
             Counter<s8_fast> timer{0, [&] () {
@@ -1291,6 +1297,8 @@ class Apu {
                     period = targetPeriod();
                 }
                 reload = false;
+                
+                return true;
             }};
                      
             u16_fast targetPeriod() const {
@@ -1309,16 +1317,19 @@ class Apu {
             }
         };
         struct Envelope {
-            bool start;
-            bool loop;
+            bool start {true};
+            bool loop {false};
 
             Counter<s8_fast> decayLevel{15, [&] () {
                 if (!loop) {
                     decayLevel.counter = 0;
                 }
+                
+                return true;
             }};
             Counter<s8_fast> timer{0, [&] () {
                 decayLevel.tick();
+                return true;
             }};
 
             void tick() {
@@ -1336,6 +1347,8 @@ class Apu {
                 return decayLevel.counter;
             }
         };
+
+        //Sound channels:
         struct Pulse {
             const std::array<std::array<bool, 8>, 4> sequences {{
                 {0, 0, 0, 0, 0, 0, 0, 1},
@@ -1344,8 +1357,8 @@ class Apu {
                 {1, 1, 1, 1, 1, 1, 0, 0},
             }};
 
-            u8_fast duty;
-            bool ignoreEnvelope;
+            u8_fast duty {0};
+            bool ignoreEnvelope {false};
 
             LengthCounter lengthCounter;
             Envelope envelope;
@@ -1378,8 +1391,8 @@ class Apu {
             } 
         };
         struct Triangle {
-            bool ascending {false};
-            u8_fast volume {15};
+            bool ascending; 
+            u8_fast volume;
 
             LinearCounter linearCounter;
             LengthCounter lengthCounter;
@@ -1416,14 +1429,14 @@ class Apu {
             }
         };
         struct Noise {
-            bool mode;
-            bool ignoreEnvelope;
+            bool mode {false};
+            bool ignoreEnvelope {false};
             u16_fast lfsr {0x0001};
 
             Envelope envelope;
             LengthCounter lengthCounter;
 
-            Counter<s16_fast> timer{0, [&] () {
+            Counter<s16_fast> timer{3, [&] () {
                 bool feedback = (lfsr ^ (mode ? lfsr >> 6 : lfsr >> 1)) & 1;
                 lfsr >>= 1;
                 setBit(lfsr, 14, feedback);
@@ -1444,12 +1457,105 @@ class Apu {
                 }
             }
         };
+        struct Dmc {
+            Apu& apu;
+
+            u8_fast irqId;
+            u8_fast volume {0};
+            bool irqEnabled {false};
+            bool silence {true};
+            bool enabled {false};
+            bool finished {true}; 
+            bool loop {false};
+            u8_fast shiftRegister;
+            //-1 indicates an empty sample buffer:
+            s16_fast sampleBuffer {0};
+            u16_fast startAddress {0xC000};
+            u16_fast address;
+
+            Dmc(Apu& apu)
+                  : apu{apu} {
+                irqId = apu.cpu.connectIrq();
+            }
+
+            void fillSampleBuffer() {
+                if (sampleBuffer == -1 && !finished) {
+                    //TODO: proper cpu stall 
+                    apu.cpu.timer.counter += 
+                        4 
+                      * (apu.cpu.timer.reload + 1) 
+                      - 1;
+                    sampleBuffer = apu.cpu.memory[address++];
+                    address |= 0x8000;
+                    bytesRemaining.tick();
+                }
+            }
+
+            Counter<s16_fast> bytesRemaining{0, [&] () {
+                if (loop) {
+                    address = startAddress;
+                }
+                else {
+                    finished = true;
+                    bytesRemaining.counter = 0;
+                    if (irqEnabled) {
+                        apu.cpu.pullIrq(irqId);
+                    }
+                }
+            }};
+
+            Counter<s8_fast> bitsRemaining{7, [&] () {
+                if (sampleBuffer == -1) {
+                    silence = true;
+                }
+                else {
+                    silence = false;
+                    shiftRegister = sampleBuffer;
+                    sampleBuffer = -1;
+                }
+            }};
+            Counter<s16_fast> timer{427, [&] () {
+                if (!silence) {
+                    if (shiftRegister & 0x01 && volume <= 125) {
+                        volume += 2;
+                    }
+                    else if (!(shiftRegister & 0x01) && volume >= 2) {
+                        volume -= 2;
+                    }
+                }
+                shiftRegister >>= 1;
+                bitsRemaining.tick();
+            }};
+
+            void tick() {
+                fillSampleBuffer();
+                timer.tick();
+            }
+
+            void toggle(const bool enable) {
+                enabled = enable;
+                if (enabled && finished) {
+                    address = startAddress;
+                    bytesRemaining.counter = bytesRemaining.reload;
+                }
+                else if (!enabled) { 
+                    bytesRemaining.counter = 0;
+                }
+                finished = !enabled; 
+            }
+
+            u8_fast output() const {
+                return volume;
+            }
+        };
+
+        //Frame counter:
         struct FrameCounter {
             Apu& apu;
 
-            s32_fast cycle {15};
-            bool fourStep {true};
-            bool interruptInhibit {false};
+            s32_fast cycle {-3};
+            bool fourStep {true}; 
+            bool interruptInhibit {false}; 
             u8_fast irqId;
 
             FrameCounter(Apu& apu)
@@ -1498,108 +1604,22 @@ class Apu {
 
             } 
         };
-        struct Dmc {
-            Apu& apu;
-
-            u8_fast irqId;
-            u8_fast volume {0};
-            bool irqEnabled {true};
-            bool silence;
-            bool enabled {false};
-            bool finished {true}; 
-            bool loop;
-            u8_fast shiftRegister;
-            //-1 indicates an empty sample buffer:
-            s16_fast sampleBuffer {0};
-            u16_fast startAddress {0xC000};
-            u16_fast address;
-
-            Dmc(Apu& apu)
-                  : apu{apu} {
-                irqId = apu.cpu.connectIrq();
-            }
-
-            void fillSampleBuffer() {
-                if (sampleBuffer == -1 && !finished) {
-                    //TODO: proper cpu stall 
-                    apu.cpu.timer.counter += 4 * 12;
-                    sampleBuffer = apu.cpu.memory[address++];
-                    address |= 0x8000;
-                    bytesRemaining.tick();
-                }
-            }
-
-            Counter<s16_fast> bytesRemaining{0, [&] () {
-                if (loop) {
-                    address = startAddress;
-                }
-                else {
-                    finished = true;
-                    bytesRemaining.counter = 0;
-                    if (irqEnabled) {
-                        apu.cpu.pullIrq(irqId);
-                    }
-                }
-            }};
-
-            Counter<s8_fast> bitsRemaining{7, [&] () {
-                if (sampleBuffer == -1) {
-                    silence = true;
-                }
-                else {
-                    silence = false;
-                    shiftRegister = sampleBuffer;
-                    sampleBuffer = -1;
-                }
-            }};
-            Counter<s16_fast> timer{0, [&] () {
-                if (!silence) {
-                    if (shiftRegister & 0x01 && volume <= 125) {
-                        volume += 2;
-                    }
-                    else if (!(shiftRegister & 0x01) && volume >= 2) {
-                        volume -= 2;
-                    }
-                }
-                shiftRegister >>= 1;
-                bitsRemaining.tick();
-            }};
-
-            void tick() {
-                fillSampleBuffer();
-                timer.tick();
-            }
-
-            void toggle(const bool enable) {
-                enabled = enable;
-                if (enabled && finished) {
-                    address = startAddress;
-                    bytesRemaining.counter = bytesRemaining.reload;
-                }
-                else if (!enabled) { 
-                    bytesRemaining.counter = 0;
-                }
-                finished = !enabled; 
-            }
-
-            u8_fast output() const {
-                return volume;
-            }
-        };
 
         Cpu& cpu;
 
-        SDL_AudioDeviceID audioDevice;
-
-        FrameCounter frameCounter{*this};
+        //Tick counter:
         u32_fast cycle {0};
 
+        FrameCounter frameCounter{*this};
+
+        //Channels:
         Pulse pulse1; 
         Pulse pulse2;
         Triangle triangle;
         Noise noise;
         Dmc dmc{*this};
 
+        //DAC output approximation tables:
         const std::array<double, 31> pulseOutput {
             0,
             0.01160913952357, 0.02293948126801, 0.03400094921689, 
@@ -1684,6 +1704,8 @@ class Apu {
             0.73640213434624, 0.73843307992511, 0.74045488307187, 
             0.74246760538076,
         };
+
+        //Miscellaneous lookup tables:
         const std::array<u16_fast, 16> noisePeriods {
                3,    7,   15,   31,   63,   95,  127,  159, 
              201,  253,  379,  507,  761, 1015, 2033, 4067,
@@ -1699,6 +1721,7 @@ class Apu {
             189, 159, 141, 127, 105,  83,  71,  53,
         };
 
+        //$4000 - $4003 register write handlers:
         void pulseWrite0(Pulse& pulse, u8 data) {
             pulse.envelope.timer.reload = data & 0x0F;
             pulse.ignoreEnvelope = data & 0x10;
@@ -1728,10 +1751,14 @@ class Apu {
         }
 
     public:
-        Apu(Cpu& cpu, SDL_AudioDeviceID& audioDevice)
-              : cpu{cpu}, audioDevice{audioDevice} { 
+        //Function that outputs samples to the audio device:
+        std::function<void(u8 sample)> outputFunction {[] (u8) {}};
+
+        Apu(Cpu& cpu) 
+              : cpu{cpu} { 
             pulse2.sweep.trueNegate = false;
 
+            //Unused addresses:
             for (u16 address : {0x4009, 0x400D, 0x4014, 0x4016}) {
                 cpu.memory.writeFunctions[address] = [] (
                         MappedMemory<>* const memory,
@@ -1914,6 +1941,8 @@ class Apu {
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
+                memory->memory[0x4017] = data;
+
                 frameCounter.interruptInhibit = data & 0x40;
                 frameCounter.fourStep = !(data & 0x80);
 
@@ -1935,38 +1964,19 @@ class Apu {
                     noise.lengthCounter.tick();
                 }
             };
-
-            /*
-            pulse1.envelope.timer.reload = 15;
-            pulse1.ignoreEnvelope = false;
-            pulse1.envelope.loop = true;
-            pulse1.lengthCounter.halt = true;
-            pulse1.lengthCounter.enabled = true;
-            pulse1.sweep.shiftCount = 7;
-            pulse1.sweep.negate = true;
-            pulse1.sweep.timer.reload = 7;
-            pulse1.sweep.enabled = true;
-            pulse1.sweep.period = 9; 
-            pulse1.lengthCounter.counter.counter = 100;
-            pulse1.duty = 3;
-            pulse1.sequencePos.counter = 0;
-            pulse1.envelope.start = true;
-            */
         }
 
-        //TODO: accurate audio sample rate (not 10):
-        Counter<s8_fast> output{10, [&] () {
-            u8 sample = (pulseOutput[
+        Counter<s8_fast> output{29, [&] () {
+            outputFunction((pulseOutput[
                            pulse1.output()
                          + pulse2.output()]
                      + tndOutput[
                             3 * triangle.output()
                           + 2 * noise.output()
-                          + dmc.output()]) * 0x100;
-            SDL_QueueAudio(audioDevice, &sample, 1); 
+                          + dmc.output()]) * 0x100);
         }};
 
-        Counter<s8_fast> timer{0, [&] () {
+        Counter<s16_fast> timer{0, [&] () {
             pulse1.tick();
             pulse2.tick();
             triangle.tick();
@@ -1978,9 +1988,18 @@ class Apu {
             ++cycle;
         }};
 
+        void reset() {
+            cpu.memory[0x4015] = 0;
+            cpu.memory[0x4017] = cpu.memory.memory[0x4017];
 
-        void tick(const u8_fast count = 1) {
-            timer.tick(count);
+            triangle.volume = 15;
+            triangle.ascending = false;
+
+            dmc.volume &= 0x01;
+        }
+
+        void tick(const u8_fast ticks = 1) {
+            timer.tick(ticks);
         }
 };
 

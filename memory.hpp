@@ -5,8 +5,6 @@
 #include <functional>
 #include "byte.hpp"
 
-//TODO: <=79 character lines
-
 template <typename DataType = u8, typename AddressType = u16>
 class MappedMemoryValue;
 
@@ -204,18 +202,24 @@ class MappedMemoryIterator {
                 const MappedMemoryIterator& left, 
                 const AddressType right
         ) { 
-            return MappedMemoryIterator(left.mappedMemory, left.currentAddress + right);
+            return MappedMemoryIterator(
+                    left.mappedMemory, 
+                    left.currentAddress + right);
         }
         friend MappedMemoryIterator operator+ (
                 const AddressType left,
                 const MappedMemoryIterator& right
         ) {
-            return MappedMemoryIterator(right.mappedMemory, right.currentAddress + left);
+            return MappedMemoryIterator(
+                    right.mappedMemory, 
+                    right.currentAddress + left);
         }
         friend MappedMemoryIterator operator- (
                 const MappedMemoryIterator& left,
                 const AddressType right
         ) {
-            return MappedMemoryIterator(left.mappedMemory, left.currentAddress - right);
+            return MappedMemoryIterator(
+                    left.mappedMemory, 
+                    left.currentAddress - right);
         }
 };

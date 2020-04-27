@@ -25,6 +25,8 @@ enum class Endianness {
     BIG
 };
 
+const u8 emptyArray[65536] {};
+
 template <
         u8 byteCount, 
         typename DataType, 
