@@ -5,6 +5,7 @@
 #include "counter.hpp"
 #include "ines.hpp"
 #include "2A03.hpp"
+#include "2C02.hpp"
 
 class Nes {
     //TODO: PPU
@@ -39,6 +40,8 @@ class Nes {
                     const u16 address,
                     const u8 data) {
             };
+            //TODO: PPU
+
 
             cpu.timer.reload = 11;
             apu.timer.reload = 11;

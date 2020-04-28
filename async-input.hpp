@@ -13,9 +13,7 @@ class AsyncInput {
         std::deque<std::string> lines{historySize};
         std::istream& input;
         std::thread thread{[&] () {
-            while (enabled) {
-                std::string line;
-                std::getline(input, line);
+            for (std::string line; enabled && std::getline(input, line); ) {
                 mutex.lock();
                 lines.push_back(line);
                 mutex.unlock();
@@ -41,7 +39,7 @@ class AsyncInput {
                 lines.pop_front();
             }
             mutex.unlock();
-            return valid;
+            return valid; 
         }
 
         void getHistory(std::string& line, const u8_fast depth) {

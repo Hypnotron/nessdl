@@ -297,8 +297,7 @@ class Nessdl {
                 targetTime += std::chrono::nanoseconds(16666666);
 
                 if (!getField<int>("paused")) {
-                    u32_fast cycles {357366};
-                    for (u32_fast j {0}; j < cycles; ++j) {
+                    for (u32_fast cycles {357366}; cycles > 0; --cycles) { 
                         nes.tick();
                     }
                 }
