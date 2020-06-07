@@ -20,11 +20,14 @@ class Nessdl {
         Nes nes;
         AsyncInput asyncInput{std::cin, 10};
         SDL_AudioDeviceID audioDevice;
+        SDL_Event event;
         SDL_Window* window;
         SDL_Renderer* renderer;
         SDL_Texture* texture;
         u32* pixels;
         int pitch;
+
+        std::array<SDL_Event, 16> buttonMap {};
 
         struct RwWrapper {
             SDL_RWops* data;
@@ -60,10 +63,20 @@ class Nessdl {
         enum class Type : u8_fast {
             INT, FLOAT, STRING,
         };
+        enum class Field : u16_fast {
+            AUDIO_BUFFER_MIN_SIZE,
+            FRAMES_REMAINING,
+            PAUSED,
+        };
 
         template <typename DataType>
         inline DataType& getField(const char* const name) {
             return *(reinterpret_cast<DataType*>(fields[name]));
+        }
+        template <typename DataType>
+        inline DataType& getField(const Field field) {
+            return getField<DataType>(
+                    fieldNames[static_cast<u16_fast>(field)].c_str());
         }
         std::unordered_map<std::string, void*> fields {
             {"audio_buffer_min_size", new int(512)},
@@ -93,6 +106,11 @@ class Nessdl {
                      || *(reinterpret_cast<const int* const>(data)) == 1;
             }},
         };
+        std::vector<std::string> fieldNames {
+            "audio_buffer_min_size",
+            "frames_remaining",
+            "paused",
+        };
 
         std::unordered_map<std::string, std::function<
                 void(std::vector<std::string>&)
@@ -110,6 +128,8 @@ class Nessdl {
                          << " to a file\n"
                      << "redo <depth>: reruns the command that was run"
                          << " <depth> line(s) ago\n"
+                     << "map <controller index> <button>: maps an SDL event"
+                         << "to an NES controller button\n"
                      << "exit: quits nessdl\n"
                      << "> ";
             }},
@@ -188,7 +208,7 @@ class Nessdl {
                 std::cerr << "> ";
             }},
             {"pause", [&] (std::vector<std::string>& args) {
-                getField<int>("paused") = !getField<int>("paused");
+                getField<int>(Field::PAUSED) = !getField<int>(Field::PAUSED);
                 std::cerr << "> ";
             }},
             {"reset", [&] (std::vector<std::string>& args) {
@@ -218,8 +238,44 @@ class Nessdl {
                 std::cerr << "running \"" << command << "\"\n"; 
                 runCommand(command); 
             }},
+            {"map", [&] (std::vector<std::string>& args) {
+                if (args[1] != "1" && args[1] != "2") {
+                    std::cerr << "invalid value " << args[1] << "\n> ";
+                    return;
+                }
+
+                while (SDL_PollEvent(&event));
+                std::cerr << "press any button...\n";
+                do {
+                    SDL_WaitEvent(&event);
+                } while (
+                        event.type != SDL_CONTROLLERBUTTONDOWN
+                     && event.type != SDL_KEYDOWN);
+
+                u8_fast index = (args[2] == "a"
+                      ? 0
+                      : args[2] == "b"
+                      ? 1
+                      : args[2] == "select"
+                      ? 2
+                      : args[2] == "start"
+                      ? 3
+                      : args[2] == "up"
+                      ? 4
+                      : args[2] == "down"
+                      ? 5
+                      : args[2] == "left"
+                      ? 6
+                      : 7) + (args[1] == "2" ? 8 : 0);
+                if ((index & 0x07) == 0x07 && args[2] != "right") {
+                    std::cerr << "assuming " << args[2] << " means 'right'";
+                }
+                buttonMap[index] = event;
+
+                std::cerr << "\n> ";
+            }},
             {"exit", [&] (std::vector<std::string>& args) {
-                getField<int>("frames_remaining") = 0;
+                getField<int>(Field::FRAMES_REMAINING) = 0;
             }},
         };
         std::unordered_map<std::string, u8_fast> commandSizes {
@@ -230,8 +286,9 @@ class Nessdl {
             {"pause", 1},
             {"reset", 1},
             {"ramdump", 2},
-            {"exit", 1},
             {"redo", 2},
+            {"map", 3},
+            {"exit", 1},
         };
         void runCommand(const std::string& command) { 
             std::istringstream line {command};
@@ -298,11 +355,11 @@ class Nessdl {
             nes.audioOutputFunction = [&] (u8 sample) {
                 if (
                         SDL_GetQueuedAudioSize(audioDevice) 
-                      < getField<int>("audio_buffer_min_size")) {
+                      < getField<int>(Field::AUDIO_BUFFER_MIN_SIZE)) {
                     SDL_QueueAudio(
                             audioDevice, 
                             std::begin(emptyArray), 
-                            getField<int>("audio_buffer_min_size"));
+                            getField<int>(Field::AUDIO_BUFFER_MIN_SIZE));
                 }
                 SDL_QueueAudio(audioDevice, &sample, 1);
             };
@@ -317,11 +374,11 @@ class Nessdl {
             auto targetTime {std::chrono::steady_clock::now()};
             for (
                     ;
-                    getField<int>("frames_remaining") > 0; 
-                    --getField<int>("frames_remaining")) {
+                    getField<int>(Field::FRAMES_REMAINING) > 0; 
+                    --getField<int>(Field::FRAMES_REMAINING)) {
                 targetTime += std::chrono::nanoseconds(16666666);
 
-                if (!getField<int>("paused")) {
+                if (!getField<int>(Field::PAUSED)) {
                     SDL_LockTexture(
                             texture, 
                             //region:
@@ -337,6 +394,57 @@ class Nessdl {
                     //                             src region  dst region
                     SDL_RenderCopy(renderer, texture, nullptr,   nullptr);
                     SDL_RenderPresent(renderer);
+                }
+
+                while (SDL_PollEvent(&event)) {
+                    std::function<bool(
+                            const SDL_Event& left, 
+                            const SDL_Event& right)> match {[] (
+                            const SDL_Event& left,
+                            const SDL_Event& right) {
+                        return false;
+                    }};
+                    bool pressed {false};
+                    switch (event.type) {
+                        //TODO: handle more events
+                        case SDL_QUIT:
+                            runCommand("exit");
+                        break;
+                        case SDL_KEYUP:
+                        case SDL_KEYDOWN:
+                            match = [] (
+                                    const SDL_Event& left, 
+                                    const SDL_Event& right) {
+                                return 
+                                        left.key.keysym.sym 
+                                     == right.key.keysym.sym; 
+                            };
+                            pressed = event.key.state == SDL_PRESSED;
+                        break;
+                        case SDL_CONTROLLERBUTTONDOWN:
+                        case SDL_CONTROLLERBUTTONUP:
+                            match = [] (
+                                    const SDL_Event& left, 
+                                    const SDL_Event& right) {
+                                return 
+                                        left.cbutton.which 
+                                     == right.cbutton.which
+                                     && left.cbutton.button 
+                                     == right.cbutton.button;
+                            };
+                            pressed = event.cbutton.state == SDL_PRESSED;
+                        break;
+                    }
+                    for (u8_fast i {0}; i < 8; ++i) {
+                        if (match(event, buttonMap[i])) {
+                            setBit(nes.controller1, i, pressed); 
+                        }
+                    }
+                    for (u8_fast i {8}; i < 16; ++i) {
+                        if (match(event, buttonMap[i])) {
+                            setBit(nes.controller2, i & 0x07, pressed); 
+                        }
+                    }
                 }
 
                 for (std::string line; asyncInput.get(line); ) {

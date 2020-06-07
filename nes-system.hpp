@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
-#include "debug.hpp"
+//TODO: remove
+#include <iostream>
 #include "byte.hpp"
 #include "counter.hpp"
 #include "ines.hpp"
@@ -14,6 +15,9 @@ class Nes {
         Apu apu {cpu};
         Ppu ppu {cpu};
         
+        bool controllerStrobe {false};
+        u8_fast controller1Shift {0}, controller2Shift {0};
+
     public:
         std::function<void(u8 sample)>& audioOutputFunction {
                 apu.outputFunction};
@@ -22,6 +26,7 @@ class Nes {
                 u8_fast y, 
                 u32 pixel)>& videoOutputFunction {
                 ppu.outputFunction};
+        u8_fast controller1 {0}, controller2 {0};
 
         Nes() {
             cpu.memory.readFunctions[0x1FFF] = [] (
@@ -35,7 +40,30 @@ class Nes {
                     const u8 data) {
                 memory->memory[address & 0x07FF] = data;
             };
-
+            cpu.memory.readFunctions[0x4016] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                bool result = controller1Shift & 0x01;
+                controller1Shift >>= !controllerStrobe;
+                return result;
+            };
+            cpu.memory.writeFunctions[0x4016] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                if (controllerStrobe || data & 0x01) {
+                    controller1Shift = controller1;
+                    controller2Shift = controller2;
+                }
+                controllerStrobe = data & 0x01;
+            };
+            cpu.memory.readFunctions[0x4017] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                bool result = controller2Shift & 0x01;
+                controller2Shift >>= !controllerStrobe;
+                return result;
+            };
 
             cpu.timer.reload = 11;
             apu.timer.reload = 11;
