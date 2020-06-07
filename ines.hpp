@@ -100,18 +100,19 @@ namespace ines {
             };
             cpuMemory.writeFunctions[0xFFFF] = openBusWrite; 
 
+            ppuMemory.resize(0x4000);
             rom.read(reinterpret_cast<char*>(ppuMemory.memory.data()), 0x2000);
             ppuMemory.readFunctions[0x1FFF] = standardRead;
             ppuMemory.writeFunctions[0x1FFF] = openBusWrite;
 
-            //TODO: 4KiB PPU VRAM 
+
             u16 mirroringBitmask;
             switch (mirroring) {
             case FOUR_SCREEN:
                 mirroringBitmask = 0x2FFF;
             break;
             case HORIZONTAL:
-                mirroringBitmask = 0x2BFF; 
+                mirroringBitmask = 0x2BFF;
             break;
             case VERTICAL:
                 mirroringBitmask = 0x27FF;
@@ -128,6 +129,8 @@ namespace ines {
                     const u8 data) {
                 memory->memory[address & mirroringBitmask] = data;
             };
+            ppuMemory.readFunctions[0x3FFF] = standardRead;
+            ppuMemory.writeFunctions[0x3FFF] = standardWrite;
         break;
 
         default:

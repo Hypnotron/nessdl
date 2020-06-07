@@ -61,9 +61,6 @@ class Cpu {
         //will be polled at the end of a tick:
         std::function<bool()> interruptCondition; 
 
-        //Tick counter:
-        u32_fast cycle {0};
-
         //General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
             return memory[0x0100 + sp];
@@ -72,7 +69,7 @@ class Cpu {
             memory[0x0100 + sp] = value;
         }
         inline void pollInterrupts() {
-            nmiPending = nmiLevel;
+            nmiPending |= nmiLevel;
             nmiLevel = false;
             irqPending = irqLevel && !(p >> INTERRUPT_DISABLE & 0x01);
         }
@@ -446,7 +443,7 @@ class Cpu {
                     push(p | !(nmiPending || irqPending) << FROM_INSTRUCTION);
                     --sp;
 
-                    pollInterrupts();                    
+                    pollInterrupts();
                 },
                 [&] () {
                     address = nmiPending ? 0xFFFA : 0xFFFE;
@@ -454,9 +451,15 @@ class Cpu {
 
                     p |= 1 << INTERRUPT_DISABLE;
                     nmiPending = false;
+                    irqPending = false;
+
+                    interruptCondition = [] () {
+                        return false;
+                    };
                 },
                 [&] () {
                     pc |= memory[address] << 8;
+                    interruptCondition = defaultInterruptCondition;
                 }, 
                 fetchOp,
             },
@@ -913,14 +916,14 @@ class Cpu {
                 },
                 [&] () {
                     doOp();
-                    opcode = memory[pc];
+                    opcode = (nmiPending || irqPending) ? 0 : memory[pc];
                     if (value) {
                         if (
                                 (pc & 0x00FF) + offset <= 0xFFu 
                              && (pc & 0x00FF) + offset >= 0) {
                             //Skip PCH fixup:
                             instrCycleStep = 2; 
-                            interruptCondition = [&] () {
+                            interruptCondition = [] () {
                                 return false;
                             };
                         }
@@ -942,12 +945,12 @@ class Cpu {
                 [&] () {
                     //PCH fixup:
                     opcode = memory[pc - offset];
-                    interruptCondition = [&] () {
+                    interruptCondition = [] () {
                         return false;
                     };
                 },
                 [&] () {
-                    opcode = memory[pc++];
+                    opcode = (nmiPending || irqPending) ? 0 : memory[pc++];
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     interruptCondition = defaultInterruptCondition;
@@ -1157,6 +1160,9 @@ class Cpu {
 
 
     public:
+        //Tick counter:
+        u32_fast cycle {0};
+
         //Memory:
         MappedMemory<> memory{0};
 
@@ -1176,6 +1182,7 @@ class Cpu {
             instrCycleStep = 1;
 
             timer.counter += 7 * (timer.reload + 1) - 1;
+            cycle = 0;
 
             //TODO: remove
             debug::log << std::hex;
@@ -1759,7 +1766,7 @@ class Apu {
             pulse2.sweep.trueNegate = false;
 
             //Unused addresses:
-            for (u16 address : {0x4009, 0x400D, 0x4014, 0x4016}) {
+            for (u16 address : {0x4009, 0x400D}) {
                 cpu.memory.writeFunctions[address] = [] (
                         MappedMemory<>* const memory,
                         const u16 address,

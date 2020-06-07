@@ -20,6 +20,11 @@ class Nessdl {
         Nes nes;
         AsyncInput asyncInput{std::cin, 10};
         SDL_AudioDeviceID audioDevice;
+        SDL_Window* window;
+        SDL_Renderer* renderer;
+        SDL_Texture* texture;
+        u32* pixels;
+        int pitch;
 
         struct RwWrapper {
             SDL_RWops* data;
@@ -254,7 +259,7 @@ class Nessdl {
 
         Nessdl() {
             //Setup:
-            SDL_Init(SDL_INIT_AUDIO);
+            SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO);
             
             SDL_AudioSpec desired, obtained;
             SDL_zero(desired);
@@ -272,6 +277,23 @@ class Nessdl {
                     &obtained, 
                     //prohibit changes to specification:
                     0);
+            window = SDL_CreateWindow(
+                    "nessdl", 
+                    SDL_WINDOWPOS_UNDEFINED,
+                    SDL_WINDOWPOS_UNDEFINED,
+                    //width:
+                    768,
+                    //height:
+                    720,
+                    SDL_WINDOW_RESIZABLE);
+            //                                driver flags
+            renderer = SDL_CreateRenderer(window, -1,    0);
+            texture = SDL_CreateTexture(
+                    renderer, 
+                    SDL_PIXELFORMAT_ARGB8888,
+                    SDL_TEXTUREACCESS_STREAMING,
+                    256,
+                    240);
 
             nes.audioOutputFunction = [&] (u8 sample) {
                 if (
@@ -283,6 +305,9 @@ class Nessdl {
                             getField<int>("audio_buffer_min_size"));
                 }
                 SDL_QueueAudio(audioDevice, &sample, 1);
+            };
+            nes.videoOutputFunction = [&] (u8_fast x, u8_fast y, u32 pixel) {
+                pixels[y * (pitch / sizeof(u32)) + x] = pixel;
             };
 
             SDL_PauseAudioDevice(audioDevice, 0);
@@ -297,9 +322,21 @@ class Nessdl {
                 targetTime += std::chrono::nanoseconds(16666666);
 
                 if (!getField<int>("paused")) {
+                    SDL_LockTexture(
+                            texture, 
+                            //region:
+                            nullptr, 
+                            reinterpret_cast<void**>(&pixels),  
+                            &pitch);
+
                     for (u32_fast cycles {357366}; cycles > 0; --cycles) { 
                         nes.tick();
                     }
+
+                    SDL_UnlockTexture(texture);
+                    //                             src region  dst region
+                    SDL_RenderCopy(renderer, texture, nullptr,   nullptr);
+                    SDL_RenderPresent(renderer);
                 }
 
                 for (std::string line; asyncInput.get(line); ) {
@@ -315,6 +352,17 @@ class Nessdl {
             }
 
             //Cleanup:
+            for (auto& field : fields) {
+                if (fieldTypes[field.first] == Type::INT) {
+                    delete reinterpret_cast<int*>(field.second);
+                }
+                else if (fieldTypes[field.first] == Type::FLOAT) {
+                    delete reinterpret_cast<float*>(field.second);
+                }
+                else if (fieldTypes[field.first] == Type::STRING) {
+                    delete reinterpret_cast<std::string*>(field.second);
+                }
+            }
             std::cerr << "\n(finished, press enter to quit): ";
             SDL_Quit();
         }
