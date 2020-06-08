@@ -450,12 +450,15 @@ class Cpu {
                     pc = memory[address++];
 
                     p |= 1 << INTERRUPT_DISABLE;
+
+                    if (nmiPending || irqPending) {
+                        interruptCondition = [] () {
+                            return false;
+                        };
+                    }
+
                     nmiPending = false;
                     irqPending = false;
-
-                    interruptCondition = [] () {
-                        return false;
-                    };
                 },
                 [&] () {
                     pc |= memory[address] << 8;
@@ -1200,6 +1203,19 @@ class Cpu {
             ++cycle;
         }};
 
+        Cpu() {
+            memory.readFunctions[0x1FFF] = [] (
+                    MappedMemory<>* const memory, 
+                    const u16 address) {
+                return memory->memory[address & 0x07FF];
+            };
+            memory.writeFunctions[0x1FFF] = [] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                memory->memory[address & 0x07FF] = data;
+            };
+        }
 
         void tick(const u8_fast ticks = 1) {
             timer.tick(ticks);
@@ -1488,10 +1504,7 @@ class Apu {
             void fillSampleBuffer() {
                 if (sampleBuffer == -1 && !finished) {
                     //TODO: proper cpu stall 
-                    apu.cpu.timer.counter += 
-                        4 
-                      * (apu.cpu.timer.reload + 1) 
-                      - 1;
+                    apu.cpu.timer.counter += 4 * (apu.cpu.timer.reload + 1); 
                     sampleBuffer = apu.cpu.memory[address++];
                     address |= 0x8000;
                     bytesRemaining.tick();

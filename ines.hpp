@@ -129,8 +129,6 @@ namespace ines {
                     const u8 data) {
                 memory->memory[address & mirroringBitmask] = data;
             };
-            ppuMemory.readFunctions[0x3FFF] = standardRead;
-            ppuMemory.writeFunctions[0x3FFF] = standardWrite;
         break;
 
         default:

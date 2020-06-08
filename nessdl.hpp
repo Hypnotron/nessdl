@@ -239,6 +239,7 @@ class Nessdl {
                 runCommand(command); 
             }},
             {"map", [&] (std::vector<std::string>& args) {
+                SDL_PauseAudioDevice(audioDevice, 1);
                 if (args[1] != "1" && args[1] != "2") {
                     std::cerr << "invalid value " << args[1] << "\n> ";
                     return;
@@ -272,6 +273,7 @@ class Nessdl {
                 }
                 buttonMap[index] = event;
 
+                SDL_PauseAudioDevice(audioDevice, 0);
                 std::cerr << "\n> ";
             }},
             {"exit", [&] (std::vector<std::string>& args) {

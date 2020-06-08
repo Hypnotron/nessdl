@@ -54,7 +54,7 @@ class Ppu {
 
         bool spriteOverflow;
         bool spriteZeroHit {false};
-        bool inVblank;
+        bool inVblank; 
 
         u8      oamaddr {0};
         u8_fast oamdata;
@@ -222,26 +222,33 @@ class Ppu {
                               | ((address >> 2) & 0x07)]);
                     }
                     attributes[(dot - 259) / 8] = 
-                            secondaryOam[(dot - 259) / 2 + 2];
+                            (renderBackground || renderSprites) 
+                          ? secondaryOam[(dot - 259) / 2 + 2]
+                          : 0xFF;
                 },
                 [&] () {
                     //debug::log << "2.3" << std::endl;
                     xPositions[(dot - 260) / 8] =
-                            secondaryOam[(dot - 260) / 2 + 3];
+                            (renderBackground || renderSprites)
+                          ? secondaryOam[(dot - 260) / 2 + 3]
+                          : 0xFF;
                 },
                 [&] () {
                     //debug::log << "2.4" << std::endl;
                     u8_fast spriteHeight = eightBySixteenSprites ? 16 : 8;
-                    u8_fast yOffset =
-                            attributes[(dot - 261) / 8] & 0x80
+                    u8_fast yOffset {0};
+                    if (renderBackground || renderSprites) { 
+                        yOffset = 
+                                attributes[(dot - 261) / 8] & 0x80
 
-                          ? secondaryOam[(dot - 261) / 2] 
-                          + spriteHeight 
-                          - scanline
+                              ? secondaryOam[(dot - 261) / 2] 
+                              + spriteHeight 
+                              - scanline
+                              - 1
 
-                          : scanline
-                          - secondaryOam[(dot - 261) / 2]
-                          - 1;
+                              : scanline
+                              - secondaryOam[(dot - 261) / 2];
+                    }
 
                     tileLows[(dot - 261) / 8] = 
                             renderBackground || renderSprites
@@ -260,16 +267,19 @@ class Ppu {
                 [&] () {
                     //debug::log << "2.6" << std::endl;
                     u8_fast spriteHeight = eightBySixteenSprites ? 16 : 8;
-                    u8_fast yOffset =
-                            attributes[(dot - 263) / 8] & 0x80
+                    u8_fast yOffset {0};
+                    if (renderBackground || renderSprites) {
+                        yOffset = 
+                                attributes[(dot - 263) / 8] & 0x80
 
-                          ? secondaryOam[(dot - 263) / 2] 
-                          + spriteHeight 
-                          - scanline
+                              ? secondaryOam[(dot - 263) / 2] 
+                              + spriteHeight 
+                              - scanline
+                              - 1
 
-                          : scanline
-                          - secondaryOam[(dot - 263) / 2]
-                          - 1;
+                              : scanline
+                              - secondaryOam[(dot - 263) / 2];
+                    }
 
                     tileHighs[(dot - 263) / 8] = 
                             renderBackground || renderSprites
@@ -529,10 +539,10 @@ class Ppu {
             //Dot and scanline increments:
             ++dot;
             if (
-                    (renderBackground || renderSprites)
+                    (renderBackground || renderSprites) 
                  && scanline == -1
                  && dot == 340
-                 && frame % 2) {
+                 && !(frame % 2)) {
                 (*operation)();
                 operation += operationStep;
                 operationStep = 1;
@@ -573,13 +583,39 @@ class Ppu {
 
         Ppu(Cpu& cpu) 
               : cpu{cpu} { 
-            cpu.memory.writeFunctions[0x3FFF] = [&] (
+            for (u16 addr : {0x3F10, 0x3F14, 0x3F18, 0x3F1C}) {
+                memory.writeFunctions[addr] = [] (
+                        MappedMemory<>* const memory,
+                        const u16 address,
+                        const u8 data) {
+                    memory->memory[address - 0x10] = data;
+                };
+                memory.readFunctions[addr] = [] (
+                        MappedMemory<>* const memory,
+                        const u16 address) {
+                    return memory->memory[address - 0x10];
+                };
+            }
+            for (u16 addr : {0x3F0F, 0x3F13, 0x3F17, 0x3F1B, 0x3FFF}) {
+                memory.writeFunctions[addr] = [] (
+                        MappedMemory<>* const memory,
+                        const u16 address,
+                        const u8 data) {
+                    memory->memory[address & 0x3F1F] = data;
+                };
+                memory.readFunctions[addr] = [] (
+                        MappedMemory<>* const memory,
+                        const u16 address) {
+                    return memory->memory[address & 0x3F1F]; 
+                };
+            }
+            cpu.memory.writeFunctions[0x3FFF] = [] (
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
                 (*memory)[address & 0x2007] = data;
             };
-            cpu.memory.readFunctions[0x3FFF] = [&] (
+            cpu.memory.readFunctions[0x3FFF] = [] (
                     MappedMemory<>* const memory,
                     const u16 address) {
                 return (*memory)[address & 0x2007];
@@ -726,7 +762,15 @@ class Ppu {
                     const u16,
                     const u8 data) {
                 memory[address] = dataLatch = data;
-                address += verticalPpuaddr ? 32 : 1; 
+                if (
+                        (renderBackground || renderSprites)
+                     && scanline >= -1 && scanline <= 239) {
+                    incrementX();
+                    incrementY();
+                }
+                else {
+                    address += verticalPpuaddr ? 32 : 1; 
+                }
             };
             cpu.memory.readFunctions[0x2007] = [&] (
                     MappedMemory<>* const,
@@ -740,14 +784,24 @@ class Ppu {
                     result = ppudata;
                     ppudata = memory[address]; 
                 }
-                address += verticalPpuaddr ? 32 : 1; 
+                if (
+                        (renderBackground || renderSprites)
+                     && scanline >= -1 && scanline <= 239) {
+                    incrementX();
+                    incrementY();
+                }
+                else {
+                    address += verticalPpuaddr ? 32 : 1; 
+                }
                 return result;
             };
             cpu.memory.writeFunctions[0x4014] = [&] (
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
-                cpu.timer.counter += (513 + cpu.cycle % 2) * 12 - 1;
+                cpu.timer.counter += 
+                        (513 + cpu.cycle % 2) 
+                      * (cpu.timer.reload + 1);
                 for (
                         u16_fast i = data << 8;
                         i < (data << 8) + 0x0100;
