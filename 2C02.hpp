@@ -250,13 +250,29 @@ class Ppu {
                               - secondaryOam[(dot - 261) / 2];
                     }
 
-                    tileLows[(dot - 261) / 8] = 
-                            renderBackground || renderSprites
-                          ? memory[
-                            (secondarySpritePatternTable << 12)
-                          | (secondaryOam[(dot - 261) / 2 + 1] << 4)
-                          | yOffset] 
-                          : 0;
+                    if (eightBySixteenSprites) { 
+                        tileLows[(dot - 261) / 8] =
+                                (renderBackground || renderSprites)
+                             && (dot - 261) / 8 < spritesEvaluated
+                              ? memory[
+                                ((secondaryOam[(dot - 261) / 2 + 1] & 0x01)
+                                     << 12)
+                              | ((secondaryOam[(dot - 261) / 2 + 1] & 0xFE)
+                                     << 4) 
+                              | ((yOffset & 0x08) << 1) 
+                              | (yOffset & 0x07)] 
+                              : 0;
+                    }
+                    else {
+                        tileLows[(dot - 261) / 8] = 
+                                (renderBackground || renderSprites)
+                             && (dot - 261) / 8 < spritesEvaluated
+                              ? memory[
+                                (secondarySpritePatternTable << 12)
+                              | (secondaryOam[(dot - 261) / 2 + 1] << 4)
+                              | yOffset] 
+                              : 0;
+                    }
 
                     if (!(attributes[(dot - 261) / 8] & 0x40)) {
                         tileLows[(dot - 261) / 8] = bitwiseReverse<1, u8>(
@@ -281,14 +297,31 @@ class Ppu {
                               - secondaryOam[(dot - 263) / 2];
                     }
 
-                    tileHighs[(dot - 263) / 8] = 
-                            renderBackground || renderSprites
-                          ? memory[
-                            (secondarySpritePatternTable << 12)
-                          | (secondaryOam[(dot - 263) / 2 + 1] << 4)
-                          | 0x08
-                          | yOffset] 
-                          : 0;
+                    if (eightBySixteenSprites) { 
+                        tileHighs[(dot - 263) / 8] =
+                                (renderBackground || renderSprites)
+                             && (dot - 263) / 8 < spritesEvaluated
+                              ? memory[
+                                ((secondaryOam[(dot - 263) / 2 + 1] & 0x01)
+                                     << 12)
+                              | ((secondaryOam[(dot - 263) / 2 + 1] & 0xFE)
+                                     << 4) 
+                              | ((yOffset & 0x08) << 1) 
+                              | 0x08
+                              | (yOffset & 0x07)] 
+                              : 0;
+                    }
+                    else {
+                        tileHighs[(dot - 263) / 8] = 
+                                (renderBackground || renderSprites)
+                             && (dot - 263) / 8 < spritesEvaluated
+                              ? memory[
+                                (secondarySpritePatternTable << 12)
+                              | (secondaryOam[(dot - 263) / 2 + 1] << 4)
+                              | 0x08
+                              | yOffset] 
+                              : 0;
+                    }
 
                     if (!(attributes[(dot - 263) / 8] & 0x40)) {
                         tileHighs[(dot - 263) / 8] = bitwiseReverse<1, u8>(
@@ -455,6 +488,7 @@ class Ppu {
                               | ((paletteLow >> fineXScroll & 1) << 2)
                               | bgValue]
                       : address >= 0x3F00 && address <= 0x3FFF
+                     && !renderBackground && !renderSprites
                       ? memory[address]
                       : memory[0x3F00]};
                 bgPixel &= grayscaleMask;
@@ -489,18 +523,19 @@ class Ppu {
                       ? spritePixel
                       : bgPixel};
 
-                spriteZeroHit |= spriteZero && spriteValue && bgValue;
+                spriteZeroHit |= 
+                        spriteZero && spriteValue && bgValue
+                     && renderBackground && renderSprites
+                     && (renderBackgroundFirstColumn && renderSpritesFirstColumn
+                     || dot > 8)
+                     && dot <= 255;
 
                 outputFunction(dot - 1, scanline, 
                         palette[pixel * 3    ] << 16 
                       | palette[pixel * 3 + 1] << 8
                       | palette[pixel * 3 + 2]);
                 
-                //Shift register updates:
-                tileLow >>= 1;
-                tileHigh >>= 1;
-                paletteLow >>= 1;
-                paletteHigh >>= 1;
+                //Sprite shifts:
                 for (u8_fast i {0}; i < 8; ++i) {
                     //DISCREPANCY: don't know whether to shift immediately 
                     //after x becomes 0 or wait another cycle, waiting:
@@ -511,6 +546,18 @@ class Ppu {
                     }
                 }
             }
+
+            //Background shifts:
+            if (
+                    scanline >= -1 && scanline <= 239
+                 && (dot >= 1 && dot <= 256
+                 || dot >= 321 && dot <= 336)) {
+                tileLow >>= 1;
+                tileHigh >>= 1;
+                paletteLow >>= 1;
+                paletteHigh >>= 1;
+            }
+
             
             //TODO: remove
             //debug::log << "DOT: " << std::dec << dot << "\n";
@@ -530,7 +577,9 @@ class Ppu {
             }
 
             //Special scroll adjustments:
-            if (scanline == -1 && dot >= 280 && dot <= 304) {
+            if (
+                    (renderBackground || renderSprites)
+                 && scanline == -1 && dot >= 280 && dot <= 304) {
                 address &= 0x041F;
                 address |= startAddress & 0x7800;
                 address |= startAddress & 0x03E0;
@@ -771,6 +820,11 @@ class Ppu {
                 else {
                     address += verticalPpuaddr ? 32 : 1; 
                 }
+                //TODO: remove debug logging
+                debug::log << "DOT: " << dot << " ";
+                debug::log << "SCANLINE: " << scanline << " ";
+                debug::log << "PPUADDR: " << address << " ";
+                debug::log << "RELOAD: " << startAddress << "\n";
             };
             cpu.memory.readFunctions[0x2007] = [&] (
                     MappedMemory<>* const,
@@ -793,6 +847,11 @@ class Ppu {
                 else {
                     address += verticalPpuaddr ? 32 : 1; 
                 }
+                //TODO: remove debug logging
+                debug::log << "DOT: " << dot << " ";
+                debug::log << "SCANLINE: " << scanline << " ";
+                debug::log << "PPUADDR: " << address << " ";
+                debug::log << "RELOAD: " << startAddress << "\n";
                 return result;
             };
             cpu.memory.writeFunctions[0x4014] = [&] (

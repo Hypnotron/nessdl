@@ -370,6 +370,7 @@ class Nessdl {
             };
 
             SDL_PauseAudioDevice(audioDevice, 0);
+            SDL_DisableScreenSaver();
             std::cerr << "Nessdl CLI: type help for information\n> ";
 
             //Main loop:

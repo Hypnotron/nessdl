@@ -417,11 +417,11 @@ class Cpu {
             operations[opcode]();
         };
         const std::function<void()> fetchOp = [&] () {
+            debugOutput();
+
             opcode = (nmiPending || irqPending) ? 0 : memory[pc++];
             instrCycle = instrCycles[instrTimings[opcode]].begin();
             instrCycleStep = 0;
-
-            debugOutput();
         };
 
         const std::vector<std::vector<std::function<void()>>> instrCycles {
@@ -919,6 +919,7 @@ class Cpu {
                 },
                 [&] () {
                     doOp();
+                    debugOutput();
                     opcode = (nmiPending || irqPending) ? 0 : memory[pc];
                     if (value) {
                         if (
@@ -942,8 +943,6 @@ class Cpu {
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     interruptCondition = defaultInterruptCondition;
-
-                    debugOutput();
                 },
                 [&] () {
                     //PCH fixup:
@@ -957,8 +956,6 @@ class Cpu {
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     interruptCondition = defaultInterruptCondition;
-
-                    debugOutput();
                 },
             },
             /*28: Pre-indexed read timing */ {
