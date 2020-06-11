@@ -1,4 +1,3 @@
-#pragma once
 #include <cstdlib>
 #include <string>
 #include <sstream>
@@ -31,18 +30,29 @@ class Nessdl {
 
         struct RwWrapper {
             SDL_RWops* data;
+            bool original;
 
-            RwWrapper(SDL_RWops* const data)
-                  : data{data} {
+            RwWrapper(SDL_RWops* const data, const bool original = true)
+                  : data{data}, original{original} {
+            }
+            RwWrapper(const RwWrapper& wrapper)
+                  : data{wrapper.data}, original{false} {
+            }
+            RwWrapper& operator= (RwWrapper&& wrapper) {
+                data = wrapper.data;
+                wrapper.original = false;
+                original = true;
+                
+                return *this;
             }
 
-            void read(void* ptr, size_t size) {
+            void read(void* const ptr, const size_t size) {
                 SDL_RWread(data, ptr, size, 1);
             }
-            void write(void* ptr, size_t size) {
+            void write(void* const ptr, const size_t size) {
                 SDL_RWwrite(data, ptr, size, 1);
             }
-            void seekg(size_t offset, std::ios::seekdir way) {
+            void seekg(const size_t offset, const std::ios::seekdir way) {
                 static const std::unordered_map<
                         std::ios::seekdir, 
                         int> wayToWhence {
@@ -52,9 +62,12 @@ class Nessdl {
                 };
                 SDL_RWseek(data, offset, wayToWhence.at(way)); 
             }
+            void seekp(const size_t offset, const std::ios::seekdir way) {
+                seekg(offset, way);
+            }
 
             ~RwWrapper() {
-                if (data) {
+                if (original && data) {
                     SDL_RWclose(data);
                 }
             }
@@ -122,7 +135,8 @@ class Nessdl {
                      << "set <variable> <value>: changes the value of " 
                          << " a variable\n"
                      << "get <variable>: prints the value of a variable\n" 
-                     << "open <filename>: opens a ROM and resets the system\n"
+                     << "open <rom filename> <sram filename>: opens a ROM and" 
+                         << " resets the system\n"
                      << "pause: pauses/unpauses the system\n"
                      << "reset: resets the system\n"
                      << "ramdump <filename>: dumps the contents of memory"
@@ -196,14 +210,20 @@ class Nessdl {
             }},
             {"open", [&] (std::vector<std::string>& args) {
                 RwWrapper rom {SDL_RWFromFile(args[1].c_str(), "rb")};
+                static RwWrapper sram {nullptr};
+                sram = RwWrapper(SDL_RWFromFile(args[2].c_str(), "ab"));
+                sram = RwWrapper(SDL_RWFromFile(args[2].c_str(), "r+b")); 
                 if (!rom.data) {
                     std::cerr << "invalid filename " << args[1] << "\n"; 
+                }
+                else if (!sram.data) {
+                    std::cerr << "invalid filename " << args[2] << "\n";
                 }
                 else if (!ines::isValid(rom)) {
                     std::cerr << "bad NES header\n";
                 }
                 else {
-                    nes.load(rom);
+                    nes.load(rom, sram);
                     nes.reset();
                 }
                 std::cerr << "> ";
@@ -285,7 +305,7 @@ class Nessdl {
             {"help", 1},
             {"set", 3},
             {"get", 2},
-            {"open", 2},
+            {"open", 3},
             {"pause", 1},
             {"reset", 1},
             {"ramdump", 2},
@@ -382,24 +402,6 @@ class Nessdl {
                     --getField<int>(Field::FRAMES_REMAINING)) {
                 targetTime += std::chrono::nanoseconds(16666666);
 
-                if (!getField<int>(Field::PAUSED)) {
-                    SDL_LockTexture(
-                            texture, 
-                            //region:
-                            nullptr, 
-                            reinterpret_cast<void**>(&pixels),  
-                            &pitch);
-
-                    for (u32_fast cycles {357366}; cycles > 0; --cycles) { 
-                        nes.tick();
-                    }
-
-                    SDL_UnlockTexture(texture);
-                    //                             src region  dst region
-                    SDL_RenderCopy(renderer, texture, nullptr,   nullptr);
-                    SDL_RenderPresent(renderer);
-                }
-
                 while (SDL_PollEvent(&event)) {
                     std::function<bool(
                             const SDL_Event& left, 
@@ -453,6 +455,24 @@ class Nessdl {
                             setBit(nes.controller2, i & 0x07, pressed); 
                         }
                     }
+                }
+
+                if (!getField<int>(Field::PAUSED)) {
+                    SDL_LockTexture(
+                            texture, 
+                            //region:
+                            nullptr, 
+                            reinterpret_cast<void**>(&pixels),  
+                            &pitch);
+
+                    for (u32_fast cycles {357366}; cycles > 0; --cycles) { 
+                        nes.tick();
+                    }
+
+                    SDL_UnlockTexture(texture);
+                    //                             src region  dst region
+                    SDL_RenderCopy(renderer, texture, nullptr,   nullptr);
+                    SDL_RenderPresent(renderer);
                 }
 
                 for (std::string line; asyncInput.get(line); ) {

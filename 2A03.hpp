@@ -933,8 +933,9 @@ class Cpu {
                         }
                         else {
                             nmiPending |= nmiLevel;
+                            nmiLevel = false;
                             irqPending |= irqLevel 
-                                       && (p >> INTERRUPT_DISABLE & 0x01);
+                                       && !(p >> INTERRUPT_DISABLE & 0x01);
                         }
                         pc += offset;
                         return;

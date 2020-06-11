@@ -816,11 +816,6 @@ class Ppu {
                 else {
                     address += verticalPpuaddr ? 32 : 1; 
                 }
-                //TODO: remove debug logging
-                debug::log << "DOT: " << dot << " ";
-                debug::log << "SCANLINE: " << scanline << " ";
-                debug::log << "PPUADDR: " << address << " ";
-                debug::log << "RELOAD: " << startAddress << "\n";
             };
             cpu.memory.readFunctions[0x2007] = [&] (
                     MappedMemory<>* const,
@@ -843,11 +838,6 @@ class Ppu {
                 else {
                     address += verticalPpuaddr ? 32 : 1; 
                 }
-                //TODO: remove debug logging
-                debug::log << "DOT: " << dot << " ";
-                debug::log << "SCANLINE: " << scanline << " ";
-                debug::log << "PPUADDR: " << address << " ";
-                debug::log << "RELOAD: " << startAddress << "\n";
                 return result;
             };
             cpu.memory.writeFunctions[0x4014] = [&] (

@@ -1,7 +1,5 @@
 #pragma once
 #include <functional>
-//TODO: remove
-#include <iostream>
 #include "byte.hpp"
 #include "counter.hpp"
 #include "ines.hpp"
@@ -9,11 +7,12 @@
 #include "2C02.hpp"
 
 class Nes {
-    //TODO: PPU
     private:
         Cpu cpu;
         Apu apu {cpu};
         Ppu ppu {cpu};
+        std::function<void(const u8_fast)> cartTick {
+                [] (const u8_fast) {}};
         
         u8_fast controller1Button {0}, controller2Button {0};
         bool controllerStrobe {false};
@@ -64,9 +63,9 @@ class Nes {
             ppu.timer.reload = 3;
         }
         
-        template <typename RomType>
-        void load(RomType& rom) {
-            ines::load(rom, cpu.memory, ppu.memory); 
+        template <typename RomType, typename SramType>
+        void load(RomType rom, SramType sram) {
+            ines::load(rom, sram, cpu.memory, ppu.memory, cartTick); 
         }
 
         void reset() {
@@ -79,6 +78,7 @@ class Nes {
             cpu.tick(ticks);
             apu.tick(ticks);
             ppu.tick(ticks);
+            cartTick(ticks);
         }
 
         void ramdump(const char* const filename) {
