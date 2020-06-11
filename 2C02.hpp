@@ -30,12 +30,10 @@ class Ppu {
         std::array<u8_fast, 8> tileLows, tileHighs {};
         std::array<u8_fast, 8> attributes {};
         std::array<u8, 8> xPositions {};
-        //TODO: Handle empty sprites in secondary OAM
 
         bool verticalPpuaddr;
         bool secondarySpritePatternTable;
         bool secondaryBackgroundPatternTable;
-        //TODO: 8x16 sprites
         bool eightBySixteenSprites;
         //TODO: master/slave
         bool nmiEnabled; 
@@ -537,8 +535,6 @@ class Ppu {
                 
                 //Sprite shifts:
                 for (u8_fast i {0}; i < 8; ++i) {
-                    //DISCREPANCY: don't know whether to shift immediately 
-                    //after x becomes 0 or wait another cycle, waiting:
                     if (--(xPositions[i]) == 255) {
                         xPositions[i] = 0;
                         tileLows[i] >>= 1;
@@ -637,12 +633,12 @@ class Ppu {
                         MappedMemory<>* const memory,
                         const u16 address,
                         const u8 data) {
-                    memory->memory[address - 0x10] = data;
+                    memory->memory[address - 0x2010] = data;
                 };
                 memory.readFunctions[addr] = [] (
                         MappedMemory<>* const memory,
                         const u16 address) {
-                    return memory->memory[address - 0x10];
+                    return memory->memory[address - 0x2010];
                 };
             }
             for (u16 addr : {0x3F0F, 0x3F13, 0x3F17, 0x3F1B, 0x3FFF}) {
@@ -650,12 +646,12 @@ class Ppu {
                         MappedMemory<>* const memory,
                         const u16 address,
                         const u8 data) {
-                    memory->memory[address & 0x3F1F] = data;
+                    memory->memory[address & 0x1F1F] = data;
                 };
                 memory.readFunctions[addr] = [] (
                         MappedMemory<>* const memory,
                         const u16 address) {
-                    return memory->memory[address & 0x3F1F]; 
+                    return memory->memory[address & 0x1F1F]; 
                 };
             }
             cpu.memory.writeFunctions[0x3FFF] = [] (

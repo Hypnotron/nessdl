@@ -84,13 +84,13 @@ class Nes {
         void ramdump(const char* const filename) {
             std::ofstream ramdumpFile {filename,
                     std::ofstream::binary | std::ofstream::trunc};
-            auto ptr {ppu.memory.begin()};
-            for (u32_fast i {0}; i <= ppu.memory.memory.size(); ++i, ++ptr) {
+            auto ptr {ppu.memory.memory.begin()};
+            for (u32_fast i {0}; i < ppu.memory.memory.size(); ++i, ++ptr) {
                 u8 byte {*ptr};
                 ramdumpFile.write(reinterpret_cast<char*>(&byte), 1);
             }
-            ptr = cpu.memory.begin();
-            for (u32_fast i {0}; i <= cpu.memory.memory.size(); ++i, ++ptr) {
+            ptr = cpu.memory.memory.begin();
+            for (u32_fast i {0}; i < cpu.memory.memory.size(); ++i, ++ptr) {
                 u8 byte {*ptr};
                 ramdumpFile.write(reinterpret_cast<char*>(&byte), 1);
             }

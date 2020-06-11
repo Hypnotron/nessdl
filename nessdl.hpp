@@ -63,6 +63,7 @@ class Nessdl {
         enum class Type : u8_fast {
             INT, FLOAT, STRING,
         };
+        //TODO: switch to using enum for field lookup
         enum class Field : u16_fast {
             AUDIO_BUFFER_MIN_SIZE,
             FRAMES_REMAINING,
@@ -408,35 +409,39 @@ class Nessdl {
                         return false;
                     }};
                     bool pressed {false};
+                    //TODO: handle more events
                     switch (event.type) {
-                        //TODO: handle more events
-                        case SDL_QUIT:
-                            runCommand("exit");
-                        break;
-                        case SDL_KEYUP:
-                        case SDL_KEYDOWN:
-                            match = [] (
-                                    const SDL_Event& left, 
-                                    const SDL_Event& right) {
-                                return 
-                                        left.key.keysym.sym 
-                                     == right.key.keysym.sym; 
-                            };
-                            pressed = event.key.state == SDL_PRESSED;
-                        break;
-                        case SDL_CONTROLLERBUTTONDOWN:
-                        case SDL_CONTROLLERBUTTONUP:
-                            match = [] (
-                                    const SDL_Event& left, 
-                                    const SDL_Event& right) {
-                                return 
-                                        left.cbutton.which 
-                                     == right.cbutton.which
-                                     && left.cbutton.button 
-                                     == right.cbutton.button;
-                            };
-                            pressed = event.cbutton.state == SDL_PRESSED;
-                        break;
+
+                    case SDL_QUIT:
+                        runCommand("exit");
+                    break;
+
+                    case SDL_KEYUP:
+                    case SDL_KEYDOWN:
+                        match = [] (
+                                const SDL_Event& left, 
+                                const SDL_Event& right) {
+                            return 
+                                    left.key.keysym.sym 
+                                 == right.key.keysym.sym; 
+                        };
+                        pressed = event.key.state == SDL_PRESSED;
+                    break;
+
+                    case SDL_CONTROLLERBUTTONDOWN:
+                    case SDL_CONTROLLERBUTTONUP:
+                        match = [] (
+                                const SDL_Event& left, 
+                                const SDL_Event& right) {
+                            return 
+                                    left.cbutton.which 
+                                 == right.cbutton.which
+                                 && left.cbutton.button 
+                                 == right.cbutton.button;
+                        };
+                        pressed = event.cbutton.state == SDL_PRESSED;
+                    break;
+
                     }
                     for (u8_fast i {0}; i < 8; ++i) {
                         if (match(event, buttonMap[i])) {

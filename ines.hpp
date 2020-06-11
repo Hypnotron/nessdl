@@ -37,6 +37,7 @@ namespace ines {
 
         u8_fast prgSize {header[4]};
         u8_fast chrSize {header[5]};
+        bool chrRam {chrSize == 0};
 
         bool saveRam = header[6] & 0x02;
         bool trainer = header[6] & 0x04;
@@ -101,21 +102,26 @@ namespace ines {
             cpuMemory.writeFunctions[0xFFFF] = openBusWrite; 
 
             ppuMemory.resize(0x4000);
-            rom.read(reinterpret_cast<char*>(ppuMemory.memory.data()), 0x2000);
-            ppuMemory.readFunctions[0x1FFF] = standardRead;
+            rom.read(reinterpret_cast<char*>(
+                    ppuMemory.memory.data() + 0x2000),
+                    0x2000);
+            ppuMemory.readFunctions[0x1FFF] = [] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                return memory->memory[address + 0x2000];
+            };
             ppuMemory.writeFunctions[0x1FFF] = openBusWrite;
-
 
             u16 mirroringBitmask;
             switch (mirroring) {
             case FOUR_SCREEN:
-                mirroringBitmask = 0x2FFF;
+                mirroringBitmask = 0x0FFF;
             break;
             case HORIZONTAL:
-                mirroringBitmask = 0x2BFF;
+                mirroringBitmask = 0x0BFF;
             break;
             case VERTICAL:
-                mirroringBitmask = 0x27FF;
+                mirroringBitmask = 0x07FF;
             break;
             }
             ppuMemory.readFunctions[0x3EFF] = [=] (
@@ -131,8 +137,197 @@ namespace ines {
             };
         break;
 
+        case 1:
+            //TODO: SOROM, SURON, SXROM support
+            static u8 shiftRegister {0};
+            static u8_fast shiftCount {0};
+            static u8_fast mmcMirroring {0};
+            static u8_fast prgMode {3};
+            static bool contiguousChr {false};
+            static u8_fast chrBank0 {0}, chrBank1 {0};
+            static u8_fast prgBank {0};
+            static bool prgEnableR {false}, prgEnableE {false}; 
+            chrSize = chrRam ? 1 : chrSize; 
+
+            cpuMemory.readFunctions[0x5FFF] = openBusRead;
+            cpuMemory.writeFunctions[0x5FFF] = openBusWrite;
+
+            //TODO: Proper SRAM handling
+            if (saveRam) {
+                cpuMemory.readFunctions[0x7FFF] = standardRead;
+                cpuMemory.writeFunctions[0x7FFF] = standardWrite;
+            }
+            else {
+                cpuMemory.readFunctions[0x7FFF] = openBusRead;
+                cpuMemory.writeFunctions[0x7FFF] = openBusWrite;
+            }
+
+            cpuMemory.resize(prgSize * 0x4000 + 0x8000);
+            rom.read(reinterpret_cast<char*>(
+                    cpuMemory.memory.data() + 0x8000),
+                    prgSize * 0x4000);
+            cpuMemory.readFunctions[0xFFFF] = [&, prgSize] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                switch (prgMode) {
+                case 0:
+                case 1:
+                    return memory->memory[address + (prgBank & 0xFE) * 0x4000];
+                break;
+                case 2:
+                    return address <= 0xBFFF 
+                          ? memory->memory[address]
+                          : memory->memory[address + (prgBank - 1) * 0x4000];
+                break;
+                default:
+                    return address <= 0xBFFF
+                          ? memory->memory[address + prgBank * 0x4000]
+                          : memory->memory[address + (prgSize - 2) * 0x4000];
+                }
+            };
+            cpuMemory.writeFunctions[0xFFFF] = [&, chrSize] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                shiftRegister >>= 1;
+                setBit(shiftRegister, 4, data & 0x01);
+                if (data & 0x80) {
+                    shiftRegister |= 0x0C; 
+                    shiftCount = 4;
+                }
+                if (++shiftCount == 5) {
+                    shiftCount = 0;
+                    if (        
+                            address >= 0x8000 && address <= 0x9FFF 
+                         || (data & 0x80)) {
+                        mmcMirroring = shiftRegister & 0x03;
+                        prgMode = shiftRegister >> 2 & 0x03;
+                        contiguousChr = !(shiftRegister & 0x10);
+                    }
+                    else if (address >= 0xA000 && address <= 0xBFFF) {
+                        chrBank0 = shiftRegister & 0x0F;
+                        chrBank0 = 
+                                chrBank0 >= chrSize * 2
+                              ? chrSize * 2 - 1 
+                              : chrBank0;
+                        prgEnableE = !(shiftRegister & 0x10);
+                    }
+                    else if (address >= 0xC000 && address <= 0xDFFF) {
+                        chrBank1 = shiftRegister & 0x0F;
+                        chrBank1 = 
+                                chrBank1 >= chrSize * 2 
+                              ? chrSize * 2 - 1 
+                              : chrBank1;
+                        prgEnableE = !(shiftRegister & 0x10);
+                    }
+                    else if (address >= 0xE000 && address <= 0xFFFF) {
+                        prgBank = shiftRegister & 0x0F;
+                        prgEnableR = !(shiftRegister & 0x10);
+                    }
+                }
+            };
+
+            ppuMemory.resize((chrSize + 1) * 0x2000);
+            rom.read(reinterpret_cast<char*>(
+                    ppuMemory.memory.data() + 0x2000),
+                    chrSize * 0x2000);
+            ppuMemory.readFunctions[0x1FFF] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                if (contiguousChr) {
+                    return memory->memory[
+                            address 
+                         + (chrBank0 & 0xFE) * 0x1000
+                         + 0x2000];
+                }
+                else {
+                    return address <= 0x0FFF
+                          ? memory->memory[
+                                    address 
+                                  + chrBank0 * 0x1000
+                                  + 0x2000]
+                          : memory->memory[
+                                    address 
+                                  + chrBank1 * 0x1000
+                                  + 0x1000];
+                }
+            };
+            if (chrRam) {
+                ppuMemory.writeFunctions[0x1FFF] = [&] (
+                        MappedMemory<>* const memory,
+                        const u16 address,
+                        const u8 data) {
+                    if (contiguousChr) {
+                        memory->memory[
+                                address
+                              + (chrBank0 & 0xFE) * 0x1000
+                              + 0x2000] = data;
+                    }
+                    else {
+                        if (address <= 0x0FFF) {
+                            memory->memory[
+                                    address 
+                                  + chrBank0 * 0x1000
+                                  + 0x2000] = data;
+                        }
+                        else {
+                            memory->memory[
+                                    address 
+                                  + chrBank1 * 0x1000
+                                  + 0x1000] = data;
+                        }
+                    }
+                };
+            }
+            else {
+                ppuMemory.writeFunctions[0x1FFF] = openBusWrite;
+            }
+
+            ppuMemory.readFunctions[0x3EFF] = [&, chrSize] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                switch (mmcMirroring) {
+                case 0:
+                    return memory->memory[address & 0x03FF];
+                break;
+                case 1:
+                    return memory->memory[(address & 0x03FF) + 0x0400];
+                break;
+                case 2:
+                    return memory->memory[address & 0x07FF];
+                break;
+                default:
+                    return memory->memory[
+                            (address & 0x0BFF)
+                          - (address & 0x0800 ? 0x0400 : 0x0000)];
+                }
+            };
+            ppuMemory.writeFunctions[0x3EFF] = [&, chrSize] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                switch (mmcMirroring) {
+                case 0:
+                    memory->memory[address & 0x03FF] = data;
+                break;
+                case 1:
+                    memory->memory[(address & 0x03FF) + 0x0400] = data;
+                break;
+                case 2:
+                    memory->memory[address & 0x07FF] = data;
+                break;
+                case 3:
+                    memory->memory[
+                            (address & 0x0BFF)
+                          - (address & 0x0800 ? 0x0400 : 0x0000)] = data;
+                break;
+                }
+            };
+        break;
+
         default:
             assert(false && mapperNumber && "Mapper unavailable"); 
+
         }
     }
 }
