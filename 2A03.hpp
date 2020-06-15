@@ -940,7 +940,7 @@ class Cpu {
                         pc += offset;
                         return;
                     }
-                    ++pc;
+                    pc += !(nmiPending || irqPending);
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
                     interruptCondition = defaultInterruptCondition;
@@ -1239,8 +1239,6 @@ class Cpu {
 
         //TODO: remove 
         void debugOutput () const {
-            debug::log << "PC: " << std::setfill('0') << std::setw(4) 
-                       << pc << "  ";
             debug::log << "OP: " << static_cast<int>(opcode) << "  ";
             debug::log << "VAL: " << static_cast<int>(value) << "  ";
             debug::log << "ADDR: " << address << "  "; 
@@ -1249,6 +1247,8 @@ class Cpu {
             debug::log << "Y: " << static_cast<int>(y) << "  ";
             debug::log << "P: " << static_cast<int>(p) << "  ";
             debug::log << "SP: " << static_cast<int>(sp) << "  \n";
+            debug::log << "PC: " << std::setfill('0') << std::setw(4) 
+                       << pc << "  ";
         }
 };
 

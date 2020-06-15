@@ -208,19 +208,27 @@ namespace ines {
                 case 1:
                     return memory->memory[
                             address 
-                          + (prgRomBank & 0xFE) * 0x4000];
+                          + (prgRomBank & 0x1E) * 0x4000];
                 break;
                 case 2:
                     return address <= 0xBFFF 
-                          ? memory->memory[address]
+                          ? memory->memory[
+                                    address
+                                  + (prgRomBank & 0x10) * 0x4000]
                           : memory->memory[
                                     address 
                                   + (prgRomBank - 1) * 0x4000];
                 break;
                 default:
                     return address <= 0xBFFF
-                          ? memory->memory[address + prgRomBank * 0x4000]
-                          : memory->memory[address + (prgSize - 2) * 0x4000];
+                          ? memory->memory[
+                                    address 
+                                  + prgRomBank * 0x4000]
+                          : memory->memory[
+                                    address 
+                                  + ((prgSize > 16 && !(prgRomBank & 0x10))
+                                  ? 14
+                                  : prgSize - 2) * 0x4000];
                 }
             };
             cpuMemory.writeFunctions[0xFFFF] = [&, chrSize] (
