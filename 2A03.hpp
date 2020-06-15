@@ -1239,6 +1239,8 @@ class Cpu {
 
         //TODO: remove 
         void debugOutput () const {
+            debug::log << "IRQ: " << irqPending << "  ";
+            debug::log << "NMI: " << nmiPending << "  ";
             debug::log << "OP: " << static_cast<int>(opcode) << "  ";
             debug::log << "VAL: " << static_cast<int>(value) << "  ";
             debug::log << "ADDR: " << address << "  "; 

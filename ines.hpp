@@ -151,10 +151,11 @@ namespace ines {
             static u8_fast mmcMirroring {0};
             static u8_fast prgMode; prgMode = 3;
             static bool contiguousChr {false};
-            static u8_fast chrBank0 {0}, chrBank1 {0};
-            static u8_fast prgRomBank {0};
+            static u8_fast chrBank0; chrBank0 = 0;
+            static u8_fast chrBank1; chrBank1 = 0;
+            static u8_fast prgRomBank; prgRomBank = 0;
             static u8_fast prgRamBank; prgRamBank = 0;
-            static bool prgEnable {false}; 
+            static bool prgRamEnable {false}; 
             chrSize = chrRam ? 1 : chrSize; 
 
             cpuMemory.readFunctions[0x5FFF] = openBusRead;
@@ -163,7 +164,7 @@ namespace ines {
             cpuMemory.readFunctions[0x7FFF] = [&, prgSize]  (
                     MappedMemory<>* const memory,
                     const u16 address) {
-                if (prgEnable) {
+                if (prgRamEnable) {
                     return memory->memory[
                             address 
                           + 0x2000
@@ -178,7 +179,7 @@ namespace ines {
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
-                if (prgEnable) {
+                if (prgRamEnable) {
                     lastSramWriteCycle = cycle;
                     memory->memory[
                             address
@@ -231,7 +232,7 @@ namespace ines {
                                   : prgSize - 2) * 0x4000];
                 }
             };
-            cpuMemory.writeFunctions[0xFFFF] = [&, chrSize] (
+            cpuMemory.writeFunctions[0xFFFF] = [&, prgSize, chrSize] (
                     MappedMemory<>* const memory,
                     const u16 address,
                     const u8 data) {
@@ -246,6 +247,7 @@ namespace ines {
                     }
                     if (++shiftCount == 5) {
                         shiftCount = 0;
+
                         if (        
                                 address >= 0x8000 && address <= 0x9FFF 
                              || (data & 0x80)) {
@@ -255,20 +257,12 @@ namespace ines {
                         }
                         else if (address >= 0xA000 && address <= 0xBFFF) {
                             chrBank0 = shiftRegister;
-                            chrBank0 = 
-                                    chrBank0 >= chrSize * 2
-                                  ? chrSize * 2 - 1 
-                                  : chrBank0;
                             setBit(prgRamBank, 1, shiftRegister & 0x04);
                             setBit(prgRamBank, 0, shiftRegister & 0x08);
                             setBit(prgRomBank, 4, shiftRegister & 0x10);
                         }
                         else if (address >= 0xC000 && address <= 0xDFFF) {
                             chrBank1 = shiftRegister; 
-                            chrBank1 = 
-                                    chrBank1 >= chrSize * 2 
-                                  ? chrSize * 2 - 1 
-                                  : chrBank1;
                             setBit(prgRamBank, 1, shiftRegister & 0x04);
                             setBit(prgRamBank, 0, shiftRegister & 0x08);
                             setBit(prgRomBank, 4, shiftRegister & 0x10);
@@ -276,8 +270,12 @@ namespace ines {
                         else if (address >= 0xE000 && address <= 0xFFFF) {
                             prgRomBank &= 0x10;
                             prgRomBank |= shiftRegister & 0x0F;
-                            prgEnable = !(shiftRegister & 0x10);
+                            prgRamEnable = !(shiftRegister & 0x10);
                         }
+
+                        chrBank0 %= chrSize * 2; 
+                        chrBank1 %= chrSize * 2; 
+                        prgRomBank %= prgSize; 
                     }
                 }
             };
