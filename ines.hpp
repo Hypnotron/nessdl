@@ -77,7 +77,7 @@ namespace ines {
         };
 
         switch (mapperNumber) {
-        case 0:
+        case 0: {
             cpuMemory.readFunctions[0x5FFF] = openBusRead; 
             cpuMemory.writeFunctions[0x5FFF] = openBusWrite;
 
@@ -139,9 +139,9 @@ namespace ines {
             };
 
             cartTick = [] (const u8_fast) {};
-        break;
+        break; }
 
-        case 1:
+        case 1: {
             //TODO: variant support
             static u32_fast lastControlWriteCycle; lastControlWriteCycle = 0;
             static u32_fast lastSramWriteCycle; lastSramWriteCycle = 0;
@@ -389,7 +389,69 @@ namespace ines {
                           + prgSize * 0x4000), 0x8000);
                 }
             };
-        break;
+        break; }
+        case 3: {
+            static u8_fast chrBank {0};
+
+            cpuMemory.readFunctions[0x7FFF] = openBusRead; 
+            cpuMemory.writeFunctions[0x7FFF] = openBusWrite;
+
+            cpuMemory.resize(prgSize * 0x4000 + 0x8000);
+            rom.read(reinterpret_cast<char*>(
+                    cpuMemory.memory.data() + 0x8000), 
+                    prgSize * 0x4000); 
+            cpuMemory.readFunctions[0xFFFF] = [=] ( 
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                return memory->memory[address 
+                        & (prgSize == 1 ? 0xBFFF : 0xFFFF)];
+            };
+            cpuMemory.writeFunctions[0xFFFF] = [&, chrSize] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                chrBank = data % chrSize;
+            };
+
+            ppuMemory.resize((chrSize + 1) * 0x2000);
+            rom.read(reinterpret_cast<char*>(
+                    ppuMemory.memory.data() + 0x2000),
+                    chrSize * 0x2000);
+            ppuMemory.readFunctions[0x1FFF] = [&] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                return memory->memory[
+                        address 
+                      + (chrBank + 1) * 0x2000];
+            };
+            ppuMemory.writeFunctions[0x1FFF] = openBusWrite;
+
+            u16 mirroringBitmask;
+            switch (mirroring) {
+            case FOUR_SCREEN:
+                mirroringBitmask = 0x0FFF;
+            break;
+            case HORIZONTAL:
+                mirroringBitmask = 0x0BFF;
+            break;
+            case VERTICAL:
+                mirroringBitmask = 0x07FF;
+            break;
+            }
+            ppuMemory.readFunctions[0x3EFF] = [=] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                return memory->memory[address & mirroringBitmask];
+            }; 
+            ppuMemory.writeFunctions[0x3EFF] = [=] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                memory->memory[address & mirroringBitmask] = data;
+            };
+
+            cartTick = [] (const u8_fast) {};
+        break; }
 
         default:
             assert(false && mapperNumber && "Mapper unavailable"); 

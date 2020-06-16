@@ -84,18 +84,21 @@ class Nessdl {
         };
 
         template <typename DataType>
-        inline DataType& getField(const char* const name) {
-            return *(reinterpret_cast<DataType*>(fields[name]));
+        inline DataType& getField(const Field field) {
+            return *(reinterpret_cast<DataType*>(fields[
+                    static_cast<u16_fast>(field)]));
         }
         template <typename DataType>
-        inline DataType& getField(const Field field) {
-            return getField<DataType>(
-                    fieldNames[static_cast<u16_fast>(field)].c_str());
+        inline DataType& getField(const char* const name) {
+            return getField<DataType>(fieldFromString[name]);
         }
-        std::unordered_map<std::string, void*> fields {
-            {"audio_buffer_min_size", new int(512)},
-            {"frames_remaining", new int(0x7FFFFFFF)},
-            {"paused", new int(1)},
+        std::vector<void*> fields {
+            //audio buffer min size:
+            new int(512),
+            //frames remaining:
+            new int (0x7FFFFFFF),
+            //paused:
+            new int (1),
         };
         std::unordered_map<std::string, Type> fieldTypes {
             {"audio_buffer_min_size", Type::INT}, 
@@ -120,10 +123,10 @@ class Nessdl {
                      || *(reinterpret_cast<const int* const>(data)) == 1;
             }},
         };
-        std::vector<std::string> fieldNames {
-            "audio_buffer_min_size",
-            "frames_remaining",
-            "paused",
+        std::unordered_map<std::string, Field> fieldFromString {
+            {"audio_buffer_min_size", Field::AUDIO_BUFFER_MIN_SIZE},
+            {"frames_remaining", Field::FRAMES_REMAINING},
+            {"paused", Field::PAUSED},
         };
 
         std::unordered_map<std::string, std::function<
@@ -149,7 +152,7 @@ class Nessdl {
                      << "> ";
             }},
             {"set", [&] (std::vector<std::string>& args) {
-                if (fields.find(args[1]) == fields.end()) {
+                if (fieldFromString.find(args[1]) == fieldFromString.end()) {
                     std::cerr << "invalid field " << args[1] << "\n> ";
                     return;
                 }
@@ -193,7 +196,7 @@ class Nessdl {
                 std::cerr << "> ";
             }},
             {"get", [&] (std::vector<std::string>& args) {
-                if (fields.find(args[1]) == fields.end()) {
+                if (fieldFromString.find(args[1]) == fieldFromString.end()) {
                     std::cerr << "invalid field " << args[1] << "\n> ";
                     return;
                 }
@@ -488,15 +491,18 @@ class Nessdl {
             }
 
             //Cleanup:
-            for (auto& field : fields) {
+            for (auto& field : fieldFromString) {
                 if (fieldTypes[field.first] == Type::INT) {
-                    delete reinterpret_cast<int*>(field.second);
+                    delete reinterpret_cast<int*>(
+                            fields[static_cast<u16_fast>(field.second)]);
                 }
                 else if (fieldTypes[field.first] == Type::FLOAT) {
-                    delete reinterpret_cast<float*>(field.second);
+                    delete reinterpret_cast<float*>(
+                            fields[static_cast<u16_fast>(field.second)]);
                 }
                 else if (fieldTypes[field.first] == Type::STRING) {
-                    delete reinterpret_cast<std::string*>(field.second);
+                    delete reinterpret_cast<std::string*>(
+                            fields[static_cast<u16_fast>(field.second)]);
                 }
             }
             std::cerr << "\n(finished, press enter to quit): ";

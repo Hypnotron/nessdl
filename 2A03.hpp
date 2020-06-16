@@ -1237,7 +1237,7 @@ class Cpu {
             nmiLevel = true;
         }
 
-        //TODO: remove 
+        //TODO: remove debug log function 
         void debugOutput () const {
             debug::log << "IRQ: " << irqPending << "  ";
             debug::log << "NMI: " << nmiPending << "  ";

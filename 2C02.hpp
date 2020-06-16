@@ -628,32 +628,21 @@ class Ppu {
 
         Ppu(Cpu& cpu) 
               : cpu{cpu} { 
-            for (u16 addr : {0x3F10, 0x3F14, 0x3F18, 0x3F1C}) {
-                memory.writeFunctions[addr] = [] (
-                        MappedMemory<>* const memory,
-                        const u16 address,
-                        const u8 data) {
-                    memory->memory[address - 0x2010] = data;
-                };
-                memory.readFunctions[addr] = [] (
-                        MappedMemory<>* const memory,
-                        const u16 address) {
-                    return memory->memory[address - 0x2010];
-                };
-            }
-            for (u16 addr : {0x3F0F, 0x3F13, 0x3F17, 0x3F1B, 0x3FFF}) {
-                memory.writeFunctions[addr] = [] (
-                        MappedMemory<>* const memory,
-                        const u16 address,
-                        const u8 data) {
-                    memory->memory[address & 0x1F1F] = data;
-                };
-                memory.readFunctions[addr] = [] (
-                        MappedMemory<>* const memory,
-                        const u16 address) {
-                    return memory->memory[address & 0x1F1F]; 
-                };
-            }
+            memory.writeFunctions[0x3FFF] = [] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                memory->memory[
+                        (address & 0x1F1F)
+                      - ((address & 0x13) == 0x10 ? 0x10 : 0x00)] = data;
+            };
+            memory.readFunctions[0x3FFF] = [] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                return memory->memory[
+                        (address & 0x1F1F)
+                      - ((address & 0x13) == 0x10 ? 0x10 : 0x00)];
+            };
             cpu.memory.writeFunctions[0x3FFF] = [] (
                     MappedMemory<>* const memory,
                     const u16 address,
@@ -715,13 +704,13 @@ class Ppu {
             cpu.memory.readFunctions[0x2002] = [&] (
                     MappedMemory<>* const memory,
                     const u16 address) {
-                u8 result = dataLatch & 0x1F;
-                result |= spriteOverflow << 5;
-                result |= spriteZeroHit << 6;
-                result |= inVblank << 7;
+                dataLatch &= 0x1F;
+                dataLatch |= spriteOverflow << 5;
+                dataLatch |= spriteZeroHit << 6;
+                dataLatch |= inVblank << 7;
                 inVblank = false;
                 firstWrite = true;
-                return result;
+                return dataLatch;
             };
             cpu.memory.writeFunctions[0x2003] = [&] (
                     MappedMemory<>* const memory,
@@ -747,10 +736,10 @@ class Ppu {
                     MappedMemory<>* const memory,
                     const u16 address) {
                 if (scanline >= 240 || (!renderBackground && !renderSprites)) {
-                    return primaryOam[oamaddr];
+                    return dataLatch = primaryOam[oamaddr];
                 }
                 else {
-                    return oamdata;
+                    return dataLatch = oamdata;
                 }
             };
             cpu.memory.writeFunctions[0x2005] = [&] (
@@ -820,13 +809,12 @@ class Ppu {
             cpu.memory.readFunctions[0x2007] = [&] (
                     MappedMemory<>* const,
                     const u16) {
-                u8_fast result; 
                 if (address >= 0x3F00 && address <= 0x3FFF) {
-                    result = memory[address] & grayscaleMask;
+                    dataLatch = memory[address] & grayscaleMask;
                     ppudata = memory[address - 0x1000]; 
                 }
                 else {
-                    result = ppudata;
+                    dataLatch = ppudata;
                     ppudata = memory[address]; 
                 }
                 if (
@@ -838,7 +826,7 @@ class Ppu {
                 else {
                     address += verticalPpuaddr ? 32 : 1; 
                 }
-                return result;
+                return dataLatch;
             };
             cpu.memory.writeFunctions[0x4014] = [&] (
                     MappedMemory<>* const memory,
