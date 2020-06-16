@@ -81,16 +81,36 @@ class Nes {
             cartTick(ticks);
         }
 
+        void writeMemory(
+                const bool toPpu, 
+                const u16 address, 
+                const u8 data) {
+            if (address <= (toPpu ? 0x3FFF : 0xFFFF)) {
+                MappedMemory<>& memory = toPpu ? ppu.memory : cpu.memory;
+                memory[address] = data;
+            }
+        }
+        int readMemory(
+                const bool fromPpu,
+                const u16 address) {
+            int value {-1};
+            if (address <= (fromPpu ? 0x3FFF : 0xFFFF)) {
+                MappedMemory<>& memory = fromPpu ? ppu.memory : cpu.memory;
+                value = memory[address];
+            }
+            return value;
+        }
+
         void ramdump(const char* const filename) {
             std::ofstream ramdumpFile {filename,
                     std::ofstream::binary | std::ofstream::trunc};
-            auto ptr {ppu.memory.memory.begin()};
-            for (u32_fast i {0}; i < ppu.memory.memory.size(); ++i, ++ptr) {
+            auto ptr {ppu.memory.begin()};
+            for (u32_fast i {0}; i <= 0x3FFF; ++i, ++ptr) {
                 u8 byte {*ptr};
                 ramdumpFile.write(reinterpret_cast<char*>(&byte), 1);
             }
-            ptr = cpu.memory.memory.begin();
-            for (u32_fast i {0}; i < cpu.memory.memory.size(); ++i, ++ptr) {
+            ptr = cpu.memory.begin();
+            for (u32_fast i {0}; i <= 0xFFFF; ++i, ++ptr) {
                 u8 byte {*ptr};
                 ramdumpFile.write(reinterpret_cast<char*>(&byte), 1);
             }

@@ -76,7 +76,6 @@ class Nessdl {
         enum class Type : u8_fast {
             INT, FLOAT, STRING,
         };
-        //TODO: switch to using enum for field lookup
         enum class Field : u16_fast {
             AUDIO_BUFFER_MIN_SIZE,
             FRAMES_REMAINING,
@@ -148,6 +147,10 @@ class Nessdl {
                          << " <depth> line(s) ago\n"
                      << "map <controller index> <button>: maps an SDL event"
                          << "to an NES controller button\n"
+                     << "write [cpu/ppu] <address> <value>:"
+                         << " writes a value to CPU or PPU memory\n"
+                     << "read [cpu/ppu] <address>: prints a value from"
+                         << " CPU or PPU memory\n"
                      << "exit: quits nessdl\n"
                      << "> ";
             }},
@@ -300,6 +303,47 @@ class Nessdl {
                 SDL_PauseAudioDevice(audioDevice, 0);
                 std::cerr << "\n> ";
             }},
+            {"write", [&] (std::vector<std::string>& args) {
+                if (args[1] != "ppu" && args[1] != "cpu") {
+                    std::cerr << "invalid value " << args[1] << "\n> ";
+                    return;
+                }
+                u16 address;
+                u8 data;
+                try {
+                    address = std::stoi(args[2], nullptr, 0);
+                }
+                catch (const std::invalid_argument& exception) {
+                    std::cerr << args[2] << " is not an integer\n> ";
+                    return;
+                }
+                try {
+                    data = std::stoi(args[3], nullptr, 0);
+                }
+                catch (const std::invalid_argument& exception) {
+                    std::cerr << args[3] << " is not an integer\n> "; 
+                    return;
+                }
+                nes.writeMemory(args[1] == "ppu", address, data);
+                std::cerr << "> "; 
+            }},
+            {"read", [&] (std::vector<std::string>& args) {
+                if (args[1] != "ppu" && args[1] != "cpu") {
+                    std::cerr << "invalid value " << args[1] << "\n> ";
+                    return;
+                }
+                u16 address;
+                try {
+                    address = std::stoi(args[2], nullptr, 0);
+                }
+                catch (const std::invalid_argument& exception) {
+                    std::cerr << args[2] << " is not an integer\n> ";
+                    return;
+                }
+                std::cerr 
+                     << nes.readMemory(args[1] == "ppu", address)
+                     << "\n> "; 
+            }},
             {"exit", [&] (std::vector<std::string>& args) {
                 getField<int>(Field::FRAMES_REMAINING) = 0;
             }},
@@ -314,6 +358,8 @@ class Nessdl {
             {"ramdump", 2},
             {"redo", 2},
             {"map", 3},
+            {"write", 4},
+            {"read", 3},
             {"exit", 1},
         };
         void runCommand(const std::string& command) { 
