@@ -382,7 +382,7 @@ class Ppu {
                     n = m = spritesEvaluated = 0;
                 },
                 [&] () {
-                    secondaryOam[dot / 2 - 1] = oamdata;
+                    secondaryOam[(dot / 2 - 1) % 32] = oamdata;
                     spriteEvalOp = spriteEvalOps[dot >= 64 ? 2 : 1].begin();
                     spriteEvalOpStep = 0;
                 },
@@ -434,7 +434,7 @@ class Ppu {
                     ++spritesEvaluated;
                     ++n;
 
-                    spriteEvalOp = spriteEvalOps[n == 64 ? 0 : 2].begin();
+                    spriteEvalOp = spriteEvalOps[n >= 64 ? 0 : 2].begin();
                     spriteEvalOpStep = 0;
                 },
             },
@@ -444,13 +444,12 @@ class Ppu {
         u16_fast dot {0};
         s16_fast scanline {0};
         u8_fast n, m, spritesEvaluated;
-        std::vector<std::function<void()>>::const_iterator operation { 
+        std::vector<std::function<void()>>::const_iterator operation {
                 operations[0].begin()};
-        u8_fast operationStep {1};
         std::vector<std::function<void()>>::const_iterator spriteEvalOp {
                 spriteEvalOps[0].begin()};
+        u8_fast operationStep {1};
         u8_fast spriteEvalOpStep {1};
- 
 
     public:
         //Tick counter:
@@ -555,7 +554,7 @@ class Ppu {
             }
 
             
-            //TODO: remove
+            //TODO: remove debug logging
             //debug::log << "DOT: " << std::dec << dot << "\n";
             //debug::log << "SCANLINE: " << scanline << "\n";
             //debug::log << "ADDRESS: " << std::hex << address << "\n";
@@ -608,9 +607,9 @@ class Ppu {
         }
 
         void reset() {
-            memory[0x2000] = 0x00;
-            memory[0x2001] = 0x00;
-            memory[0x2005] = 0x00;
+            cpu.memory[0x2000] = 0x00;
+            cpu.memory[0x2001] = 0x00;
+            cpu.memory[0x2005] = 0x00;
 
             firstWrite = true;
             ppudata = 0x00;
@@ -628,6 +627,9 @@ class Ppu {
 
         Ppu(Cpu& cpu) 
               : cpu{cpu} { 
+            operation = operations[0].begin();
+            spriteEvalOp = spriteEvalOps[0].begin();
+
             memory.writeFunctions[0x3FFF] = [] (
                     MappedMemory<>* const memory,
                     const u16 address,
@@ -642,6 +644,17 @@ class Ppu {
                 return memory->memory[
                         (address & 0x1F1F)
                       - ((address & 0x13) == 0x10 ? 0x10 : 0x00)];
+            };
+            memory.writeFunctions[0xFFFF] = [] (
+                    MappedMemory<>* const memory,
+                    const u16 address,
+                    const u8 data) {
+                (*memory)[address & 0x3FFF] = data;
+            };
+            memory.readFunctions[0xFFFF] = [] (
+                    MappedMemory<>* const memory,
+                    const u16 address) {
+                return (*memory)[address & 0x3FFF];
             };
             cpu.memory.writeFunctions[0x3FFF] = [] (
                     MappedMemory<>* const memory,
@@ -809,9 +822,9 @@ class Ppu {
             cpu.memory.readFunctions[0x2007] = [&] (
                     MappedMemory<>* const,
                     const u16) {
-                if (address >= 0x3F00 && address <= 0x3FFF) {
+                if ((address & 0x3FFF) >= 0x3F00) {
                     dataLatch = memory[address] & grayscaleMask;
-                    ppudata = memory[address - 0x1000]; 
+                    ppudata = memory[(address) - 0x1000]; 
                 }
                 else {
                     dataLatch = ppudata;

@@ -85,7 +85,7 @@ class Nes {
                 const bool toPpu, 
                 const u16 address, 
                 const u8 data) {
-            if (address <= (toPpu ? 0x3FFF : 0xFFFF)) {
+            if (!toPpu || address <= 0x3FFF) {
                 MappedMemory<>& memory = toPpu ? ppu.memory : cpu.memory;
                 memory[address] = data;
             }
@@ -94,7 +94,7 @@ class Nes {
                 const bool fromPpu,
                 const u16 address) {
             int value {-1};
-            if (address <= (fromPpu ? 0x3FFF : 0xFFFF)) {
+            if (!fromPpu || address <= 0x3FFF) {
                 MappedMemory<>& memory = fromPpu ? ppu.memory : cpu.memory;
                 value = memory[address];
             }
