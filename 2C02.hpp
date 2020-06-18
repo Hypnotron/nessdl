@@ -2,7 +2,7 @@
 #include <vector>
 #include <functional>
 #include "byte.hpp"
-//TODO: remove
+//TODO: remove debug module
 #include "debug.hpp"
 #include "memory.hpp"
 #include "2A03.hpp"
@@ -374,6 +374,24 @@ class Ppu {
                         spriteEvalOp = spriteEvalOps[1].begin();
                     }
                     spriteEvalOpStep = 0;
+
+                    if (dot >= 65 && dot <= 256 && dot % 2) {
+                        oamdata = primaryOam[n * 4];
+                    }
+                    else if (dot >= 257 && dot <= 320) {
+                        if ((dot - 1) % 8 <= 3) {
+                            oamdata = secondaryOam[
+                                    ((dot - 257) & 0x03)
+                                  | (((dot - 257) & 0xF8) >> 1)];
+                        }
+                        else {
+                            oamdata = secondaryOam[
+                                    (((dot - 257) / 2) & 0xFC) + 3];
+                        }
+                    }
+                    else if (dot == 0 || dot >= 321) {
+                        oamdata = secondaryOam[0];
+                    }
                 }
             },
             /*1: Clear secondary OAM */ {

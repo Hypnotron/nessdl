@@ -3,6 +3,7 @@
 #include <string>
 #include <array>
 #include <functional>
+//TODO: remove debug module
 #include "debug.hpp"
 #include "byte.hpp"
 #include "memory.hpp"
@@ -13,6 +14,7 @@ namespace ines {
     bool isValid(RomType& rom) {
         std::array<u8, 4> magic;
         rom.read(reinterpret_cast<char*>(magic.begin()), 4);
+        rom.seekg(-4, std::ios::cur);
         return 
                 readBytes<4, u32, Endianness::BIG>(magic.begin())
              == 0x4E45531A; 
@@ -31,8 +33,6 @@ namespace ines {
             VERTICAL,
             FOUR_SCREEN,
         };
-
-        rom.seekg(0, std::ios::beg);
 
         std::array<u8, 0x10> header;
         rom.read(reinterpret_cast<char*>(header.begin()), 0x10);
@@ -200,6 +200,7 @@ namespace ines {
                 sram.read(reinterpret_cast<char*>(
                         cpuMemory.memory.data() + 0x8000 + prgSize * 0x4000),
                         0x8000);
+                sram.seekg(-0x8000, std::ios::cur);
             }
             cpuMemory.readFunctions[0xFFFF] = [&, prgSize] (
                     MappedMemory<>* const memory,
@@ -382,11 +383,11 @@ namespace ines {
                 cycle += ticks;
                 if (saveRam && static_cast<u32_fast>(
                         cycle - lastSramWriteCycle) == 21441960) {
-                    sram.seekp(0, std::ios::beg);
-                    sram.write(
-                            (cpuMemory.memory.data()
+                    sram.write(reinterpret_cast<const char*>(
+                            cpuMemory.memory.data()
                           + 0x8000
                           + prgSize * 0x4000), 0x8000);
+                    sram.seekp(-0x8000, std::ios::cur);
                 }
             };
         break; }

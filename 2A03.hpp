@@ -3,6 +3,7 @@
 #include <array>
 #include <vector>
 #include <functional>
+//TODO: remove debug module
 #include "debug.hpp"
 #include "byte.hpp"
 #include "counter.hpp"
@@ -1185,7 +1186,7 @@ class Cpu {
             timer.counter += 7 * (timer.reload + 1) - 1;
             cycle = 0;
 
-            //TODO: remove
+            //TODO: remove hex output
             debug::log << std::hex;
         } 
 
@@ -1218,6 +1219,35 @@ class Cpu {
         void tick(const u8_fast ticks = 1) {
             timer.tick(ticks);
         }
+
+        template <typename StateType>
+        void dumpState(StateType& state) {
+            //TODO: Finish dump state method
+            state.write(a, sizeof(a));
+            state.write(x, sizeof(x));
+            state.write(y, sizeof(y));
+            state.write(pc, sizeof(pc));
+            state.write(sp, sizeof(sp));
+            state.write(p, sizeof(p));
+            state.write(opcode, sizeof(opcode));
+            state.write(value, sizeof(value));
+            state.write(pointerAddress, sizeof(pointerAddress));
+            state.write(pointerAddressHigh, sizeof(pointerAddressHigh));
+            state.write(address, sizeof(address));
+            state.write(offset, sizeof(offset));
+            state.write(instrCycle, sizeof(instrCycle));
+            state.write(instrCycleStep, sizeof(instrCycleStep));
+            state.write(irqLevel, sizeof(irqLevel));
+            state.write(irqDevices, sizeof(irqDevices));
+            state.write(nmiLevel, sizeof(nmiLevel));
+            state.write(irqPending, sizeof(irqPending));
+            state.write(nmiPending, sizeof(nmiPending));
+            state.write(interruptCondition, sizeof(interruptCondition));
+            state.write(value, sizeof(value));
+            state.write(value, sizeof(value));
+            state.write(value, sizeof(value));
+        }
+        //TODO: Load state method
 
         u8_fast connectIrq() {
             assert(irqDevices < 32 

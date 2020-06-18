@@ -49,7 +49,7 @@ class Nessdl {
             void read(void* const ptr, const size_t size) {
                 SDL_RWread(data, ptr, size, 1);
             }
-            void write(void* const ptr, const size_t size) {
+            void write(const void* const ptr, const size_t size) {
                 SDL_RWwrite(data, ptr, size, 1);
             }
             void seekg(const size_t offset, const std::ios::seekdir way) {
