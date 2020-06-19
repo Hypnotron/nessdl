@@ -5,12 +5,12 @@ LDFLAGS +=
 
 LINUX_CC = clang++
 LINUX_CPPFLAGS += -DOS_LINUX $(shell sdl2-config --cflags)
-LINUX_LDFLAGS += $(shell sdl2-config --libs)
+LINUX_LDFLAGS += $(shell sdl2-config --libs) 
 
 WIN_CC = x86_64-w64-mingw32-c++
 WIN_CPPFLAGS += -DOS_WINDOWS
 WIN_LDFLAGS += -static-libstdc++ -static-libgcc -Wl,-Bstatic -lstdc++ -lpthread \
-		-Wl,-Bdynamic -lmingw32 -lSDL2main -lSDL2 
+	       -Wl,-Bdynamic -lmingw32 -lSDL2main -lSDL2 
 
 MAC_CC = /home/main/src/osxcross/target/bin/o64-clang++ 
 MAC_CPPFLAGS += -DOS_MACOS 

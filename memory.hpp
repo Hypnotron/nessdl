@@ -222,4 +222,10 @@ class MappedMemoryIterator {
                     left.mappedMemory, 
                     left.currentAddress - right);
         }
+        friend AddressType operator- (
+                const MappedMemoryIterator& left,
+                const MappedMemoryIterator& right
+        ) {
+            return left.currentAddress - right.currentAddress; 
+        }
 };

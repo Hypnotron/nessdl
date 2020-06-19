@@ -9,10 +9,9 @@
 class Nes {
     private:
         Cpu cpu;
-        Apu apu {cpu};
-        Ppu ppu {cpu};
-        std::function<void(const u8_fast)> cartTick {
-                [] (const u8_fast) {}};
+        Apu apu{cpu};
+        Ppu ppu{cpu};
+        Cartridge cart{cpu.memory, ppu.memory};
         
         u8_fast controller1Button {0}, controller2Button {0};
         bool controllerStrobe {false};
@@ -25,6 +24,7 @@ class Nes {
                 u8_fast y, 
                 u32 pixel)>& videoOutputFunction {
                 ppu.outputFunction};
+        u32_fast& frame {ppu.frame};
         u8_fast controller1 {0}, controller2 {0};
 
         Nes() {
@@ -65,7 +65,7 @@ class Nes {
         
         template <typename RomType, typename SramType>
         void load(RomType rom, SramType sram) {
-            ines::load(rom, sram, cpu.memory, ppu.memory, cartTick); 
+            cart.load(rom, sram);
         }
 
         void reset() {
@@ -78,7 +78,7 @@ class Nes {
             cpu.tick(ticks);
             apu.tick(ticks);
             ppu.tick(ticks);
-            cartTick(ticks);
+            cart.tick(ticks);
         }
 
         void writeMemory(
@@ -99,6 +99,27 @@ class Nes {
                 value = memory[address];
             }
             return value;
+        }
+
+        template <typename StateType>
+        void dumpState(StateType& state) {
+            cpu.dumpState(state);
+            apu.dumpState(state);
+            ppu.dumpState(state);
+
+            std::vector<u8> cartState(cart.stateSize);
+            cart.dumpState(cartState);
+            state.write(cartState.data(), cart.stateSize); 
+        }
+        template <typename StateType>
+        void loadState(StateType& state) {
+            cpu.loadState(state);
+            apu.loadState(state);
+            ppu.loadState(state);
+
+            std::vector<u8> cartState(cart.stateSize);
+            state.read(cartState.data(), cart.stateSize);
+            cart.loadState(cartState);
         }
 
         void ramdump(const char* const filename) {

@@ -12,6 +12,7 @@
 #include "byte.hpp"
 #include "async-input.hpp"
 #include "memory.hpp"
+#include "ines.hpp"
 #include "nes-system.hpp"
 
 class Nessdl {
@@ -47,20 +48,18 @@ class Nessdl {
             }
 
             void read(void* const ptr, const size_t size) {
-                SDL_RWread(data, ptr, size, 1);
+                SDL_RWread(data, ptr, 1, size);
             }
             void write(const void* const ptr, const size_t size) {
-                SDL_RWwrite(data, ptr, size, 1);
+                SDL_RWwrite(data, ptr, 1, size);
             }
             void seekg(const size_t offset, const std::ios::seekdir way) {
-                static const std::unordered_map<
-                        std::ios::seekdir, 
-                        int> wayToWhence {
-                    {std::ios::beg, RW_SEEK_SET},
-                    {std::ios::cur, RW_SEEK_CUR},
-                    {std::ios::end, RW_SEEK_END},
-                };
-                SDL_RWseek(data, offset, wayToWhence.at(way)); 
+                SDL_RWseek(data, offset,
+                        (way == std::ios::beg
+                      ? RW_SEEK_SET
+                      : way == std::ios::cur
+                      ? RW_SEEK_CUR
+                      : RW_SEEK_END));
             }
             void seekp(const size_t offset, const std::ios::seekdir way) {
                 seekg(offset, way);
@@ -151,6 +150,10 @@ class Nessdl {
                          << " writes a value to CPU or PPU memory\n"
                      << "read [cpu/ppu] <address>: prints a value from"
                          << " CPU or PPU memory\n"
+                     << "savestate <filename>: saves the current execution" 
+                         << " state to a file\n"
+                     << "loadstate <filename>: loads the current execution"
+                         << " state from a file\n"
                      << "exit: quits nessdl\n"
                      << "> ";
             }},
@@ -225,7 +228,7 @@ class Nessdl {
                 else if (!sram.data) {
                     std::cerr << "invalid filename " << args[2] << "\n";
                 }
-                else if (!ines::isValid(rom)) {
+                else if (!Cartridge::isValid(rom)) {
                     std::cerr << "bad NES header\n";
                 }
                 else {
@@ -344,6 +347,24 @@ class Nessdl {
                      << nes.readMemory(args[1] == "ppu", address)
                      << "\n> "; 
             }},
+            {"savestate", [&] (std::vector<std::string>& args) {
+                RwWrapper state {SDL_RWFromFile(args[1].c_str(), "wb")};
+                if (!state.data) {
+                    std::cerr << "invalid filename " << args[1] << "\n> "; 
+                    return;
+                }
+                nes.dumpState(state);
+                std::cerr << "> ";
+            }},
+            {"loadstate", [&] (std::vector<std::string>& args) {
+                RwWrapper state {SDL_RWFromFile(args[1].c_str(), "rb")};
+                if (!state.data) {
+                    std::cerr << "invalid filename " << args[1] << "\n> ";
+                    return;
+                }
+                nes.loadState(state);
+                std::cerr << "> ";
+            }},
             {"exit", [&] (std::vector<std::string>& args) {
                 getField<int>(Field::FRAMES_REMAINING) = 0;
             }},
@@ -392,7 +413,7 @@ class Nessdl {
             
             SDL_AudioSpec desired, obtained;
             SDL_zero(desired);
-            desired.freq = 59561;
+            desired.freq = 59562;
             desired.format = AUDIO_U8;
             desired.channels = 1;
             desired.samples = 2048;
@@ -514,7 +535,7 @@ class Nessdl {
                             reinterpret_cast<void**>(&pixels),  
                             &pitch);
 
-                    for (u32_fast cycles {357366}; cycles > 0; --cycles) { 
+                    for (u32_fast frame {nes.frame}; frame == nes.frame; ) {
                         nes.tick();
                     }
 

@@ -25,10 +25,10 @@ class Ppu {
         u8_fast tileLatchLow;
         u8_fast tileLatchHigh;
 
-        std::array<u8_fast, 256> primaryOam {};
-        std::array<u8_fast, 32> secondaryOam {};
-        std::array<u8_fast, 8> tileLows, tileHighs {};
-        std::array<u8_fast, 8> attributes {};
+        std::array<u8, 256> primaryOam {};
+        std::array<u8, 32> secondaryOam {};
+        std::array<u8, 8> tileLows, tileHighs {};
+        std::array<u8, 8> attributes {};
         std::array<u8, 8> xPositions {};
 
         bool verticalPpuaddr;
@@ -112,7 +112,7 @@ class Ppu {
         }
 
         //Operation tables:
-        std::vector<std::vector<std::function<void()>>> operations {
+        const std::vector<std::vector<std::function<void()>>> operations {
             /*0: Initialize visible scanlines */ {
                 [&] () {
                     //debug::log << "0.0" << std::endl;
@@ -367,7 +367,7 @@ class Ppu {
             },
         };
         //Sprite evaluation:
-        std::vector<std::vector<std::function<void()>>> spriteEvalOps {
+        const std::vector<std::vector<std::function<void()>>> spriteEvalOps {
             /*0: Idling */ { 
                 [&] () {
                     if (dot == 0 && scanline >= 0 && scanline <= 239) {
@@ -641,6 +641,203 @@ class Ppu {
 
             frame = 0;
             cycle = 0;
+        }
+
+        template <typename StateType>
+        void dumpState(StateType& state) {
+            auto dump {[&] (const u8 data) {
+                //                  size in bytes
+                state.write(&data,              1);
+            }};
+            
+            dump(dataLatch);
+
+            dump(startAddress & 0x00FF);
+            dump(startAddress >> 8);
+            dump(address & 0x00FF);
+            dump(address >> 8);
+            dump(fineXScroll);
+            dump(tileLow & 0x00FF);
+            dump(tileLow >> 8);
+            dump(tileHigh & 0x00FF);
+            dump(tileHigh >> 8);
+            dump(paletteLow & 0x00FF);
+            dump(paletteLow >> 8);
+            dump(paletteHigh & 0x00FF);
+            dump(paletteHigh >> 8);
+
+            dump(tileIndexLatch);
+            dump(paletteLatchLow);
+            dump(paletteLatchHigh);
+            dump(tileLatchLow);
+            dump(tileLatchHigh);
+
+            state.write(reinterpret_cast<const char*>(
+                    primaryOam.data()), 
+                    256);
+            state.write(reinterpret_cast<const char*>(
+                    secondaryOam.data()), 
+                    32);
+            state.write(reinterpret_cast<const char*>(
+                    tileLows.data()), 
+                    8);
+            state.write(reinterpret_cast<const char*>(
+                    tileHighs.data()), 
+                    8);
+            state.write(reinterpret_cast<const char*>(
+                    attributes.data()), 
+                    8);
+            state.write(reinterpret_cast<const char*>(
+                    xPositions.data()), 
+                    8);
+
+            dump(verticalPpuaddr);
+            dump(secondarySpritePatternTable);
+            dump(secondaryBackgroundPatternTable);
+            dump(eightBySixteenSprites);
+            //TODO: master/slave
+            dump(nmiEnabled);
+
+            dump(grayscaleMask);
+            dump(renderBackgroundFirstColumn);
+            dump(renderSpritesFirstColumn);
+            dump(renderBackground);
+            dump(renderSprites);
+            dump(emphasizeRed);
+            dump(emphasizeGreen);
+            dump(emphasizeBlue);
+
+            dump(firstWrite);
+
+            dump(spriteOverflow);
+            dump(spriteZeroHit);
+            dump(inVblank);
+
+            dump(oamaddr);
+            dump(oamdata);
+            dump(ppudata);
+
+            dump(n);
+            dump(m);
+            dump(spritesEvaluated);
+
+            dump(cycle & 0x000000FF);
+            dump(cycle >> 8 & 0x0000FF);
+            dump(cycle >> 16 & 0x00FF);
+            dump(cycle >> 24);
+            dump(frame & 0x000000FF);
+            dump(frame >> 8 & 0x0000FF);
+            dump(frame >> 16 & 0x00FF);
+            dump(frame >> 24);
+
+            state.write(reinterpret_cast<const char*>(
+                    memory.memory.data()),
+                    0x2000);
+            
+            dump(timer.reload);
+            dump(timer.counter);
+        }
+        template <typename StateType>
+        void loadState(StateType& state) {
+            auto load {[&] () {
+                u8 result;
+                //                  size in bytes
+                state.read(&result,             1);
+                return result;
+            }};
+
+            dataLatch = load();
+
+            startAddress = load();
+            startAddress |= load() << 8;
+            address = load();
+            address |= load() << 8;
+            fineXScroll = load();
+            tileLow = load();
+            tileLow |= load() << 8;
+            tileHigh = load();
+            tileHigh |= load() << 8;
+            paletteLow = load();
+            paletteLow |= load() << 8;
+            paletteHigh = load();
+            paletteHigh |= load() << 8;
+
+            tileIndexLatch = load();
+            paletteLatchLow = load();
+            paletteLatchHigh = load();
+            tileLatchLow = load();
+            tileLatchHigh = load();
+
+            state.read(reinterpret_cast<char*>(
+                    primaryOam.data()), 
+                    256);
+            state.read(reinterpret_cast<char*>(
+                    secondaryOam.data()), 
+                    32);
+            state.read(reinterpret_cast<char*>(
+                    tileLows.data()),
+                    8);
+            state.read(reinterpret_cast<char*>(
+                    tileHighs.data()),
+                    8);
+            state.read(reinterpret_cast<char*>(
+                    attributes.data()),
+                    8);
+            state.read(reinterpret_cast<char*>(
+                    xPositions.data()),
+                    8);
+
+            verticalPpuaddr = load();
+            secondarySpritePatternTable = load();
+            secondaryBackgroundPatternTable = load();
+            eightBySixteenSprites = load();
+            //TODO: master/slave
+            nmiEnabled = load();
+
+            grayscaleMask = load();
+            renderBackgroundFirstColumn = load();
+            renderSpritesFirstColumn = load();
+            renderBackground = load();
+            renderSprites = load();
+            emphasizeRed = load();
+            emphasizeGreen = load();
+            emphasizeBlue = load();
+
+            firstWrite = load();
+
+            spriteOverflow = load();
+            spriteZeroHit = load();
+            inVblank = load();
+
+            oamaddr = load();
+            oamdata = load();
+            ppudata = load();
+
+            dot = 0;
+            scanline = -1;
+            n = load();
+            m = load();
+            spritesEvaluated = load();
+            operation = operations[0].begin();
+            spriteEvalOp = spriteEvalOps[0].begin();
+            operationStep = 1;
+            spriteEvalOpStep = 1;
+
+            cycle = load();
+            cycle |= load() << 8;
+            cycle |= load() << 16;
+            cycle |= load() << 24;
+            frame = load();
+            frame |= load() << 8;
+            frame |= load() << 16;
+            frame |= load() << 24;
+
+            state.read(reinterpret_cast<char*>(
+                    memory.memory.data()), 
+                    0x2000);
+
+            timer.reload = toSigned(load());
+            timer.counter = toSigned(load());
         }
 
         Ppu(Cpu& cpu) 

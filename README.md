@@ -10,10 +10,10 @@ Releases will be made available at some point in time for:
 
 # Compiling 
 ##### Prerequisites
-+ clang
++ gcc 
 + SDL2    
 `mkdir -p build/Nessdl.app/Contents/MacOS`    
-`make linux`, `make windows`, or `make macos`     
+`make linux LINUX_CC=g++`, `make windows`, or `make macos` 
 
 # Documents
 + [Nesdev Wiki](http://wiki.nesdev.com/w/index.php/Nesdev_Wiki)

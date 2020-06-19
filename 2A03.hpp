@@ -51,16 +51,8 @@ class Cpu {
         //Interrupt status (updated before final cycle or manually):
         bool irqPending; 
         bool nmiPending;
-        //Default value for interruptCondition (declared below):
-        const std::function<bool()> defaultInterruptCondition = [&] () {
-            //Poll interrupts before the final cycle of every instruction
-            //and before the second cycle of relative instructions:
-            return instrCycle == instrCycles[27].begin()
-                || instrCycle == instrCycles[instrTimings[opcode]].end() - 2;
-        }; 
-        //If lambda returns true, interrupts 
-        //will be polled at the end of a tick:
-        std::function<bool()> interruptCondition; 
+        //Set to true by certain instructions to skip interrupt polling:
+        bool doNotInterrupt {false};
 
         //General CPU operations (not bound to a specific cycle):
         inline u8 pull() {
@@ -452,18 +444,14 @@ class Cpu {
 
                     p |= 1 << INTERRUPT_DISABLE;
 
-                    if (nmiPending || irqPending) {
-                        interruptCondition = [] () {
-                            return false;
-                        };
-                    }
+                    doNotInterrupt = nmiPending || irqPending;
 
                     nmiPending = false;
                     irqPending = false;
                 },
                 [&] () {
                     pc |= memory[address] << 8;
-                    interruptCondition = defaultInterruptCondition;
+                    doNotInterrupt = false;
                 }, 
                 fetchOp,
             },
@@ -928,9 +916,7 @@ class Cpu {
                              && (pc & 0x00FF) + offset >= 0) {
                             //Skip PCH fixup:
                             instrCycleStep = 2; 
-                            interruptCondition = [] () {
-                                return false;
-                            };
+                            doNotInterrupt = true;
                         }
                         else {
                             nmiPending |= nmiLevel;
@@ -944,20 +930,18 @@ class Cpu {
                     pc += !(nmiPending || irqPending);
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
-                    interruptCondition = defaultInterruptCondition;
+                    doNotInterrupt = false;
                 },
                 [&] () {
                     //PCH fixup:
                     opcode = memory[pc - offset];
-                    interruptCondition = [] () {
-                        return false;
-                    };
+                    doNotInterrupt = true;
                 },
                 [&] () {
                     opcode = (nmiPending || irqPending) ? 0 : memory[pc++];
                     instrCycle = instrCycles[instrTimings[opcode]].begin();
                     instrCycleStep = 0;
-                    interruptCondition = defaultInterruptCondition;
+                    doNotInterrupt = false;
                 },
             },
             /*28: Pre-indexed read timing */ {
@@ -1143,14 +1127,14 @@ class Cpu {
         const std::array<u8_fast, 0x100> instrTimings {
         //      .0, .1, .2, .3, .4, .5, .6, .7, .8, .9, .A, .B, .C, .D, .E, .F, 
         /*0*/    0, 28, 35, 29, 12, 12, 13, 13,  3,  7,  6,  7,  9,  9, 10, 10, 
-        /*1*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,  
-        /*2*/    5, 28, 35, 29, 12, 12, 13, 13,  4,  7,  6,  7,  9,  9, 10, 10, 
+        /*1*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23, 
+        /*2*/    5, 28, 35, 29, 12, 12, 13, 13,  4,  7,  6,  7,  9,  9, 10, 10,
         /*3*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,
         /*4*/    1, 28, 35, 29, 12, 12, 13, 13,  3,  7,  6,  7,  8,  9, 10, 10,
-        /*5*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23, 
+        /*5*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,
         /*6*/    2, 28, 35, 29, 12, 12, 13, 13,  4,  7,  6,  7, 34,  9, 10, 10,
         /*7*/   27, 31, 35, 32, 15, 15, 17, 17,  6, 22,  6, 24, 21, 21, 23, 23,
-        /*8*/    7, 30,  7, 30, 14, 14, 14, 14,  6,  7,  6, 35, 11, 11, 11, 11, 
+        /*8*/    7, 30,  7, 30, 14, 14, 14, 14,  6,  7,  6, 35, 11, 11, 11, 11,
         /*9*/   27, 33, 35, 35, 19, 19, 20, 20,  6, 26,  6, 35, 35, 25, 35, 35,
         /*A*/    7, 28,  7, 28, 12, 12, 12, 12,  6,  7,  6,  7,  9,  9,  9,  9,
         /*B*/   27, 31, 35, 31, 15, 15, 16, 16,  6, 22,  6, 22, 21, 21, 22, 22,
@@ -1169,7 +1153,7 @@ class Cpu {
         MappedMemory<> memory{0};
 
         void reset() {
-            interruptCondition = defaultInterruptCondition;
+            doNotInterrupt = false;
             nmiPending = false;
             irqPending = false;
             nmiLevel = false;
@@ -1195,7 +1179,10 @@ class Cpu {
             instrCycle += instrCycleStep;
             instrCycleStep = 1;
 
-            if (interruptCondition()) {
+            if (
+                    (instrCycle == instrCycles[27].begin()
+                 || instrCycle == instrCycles[instrTimings[opcode]].end() - 2)
+                 && !doNotInterrupt) {
                 pollInterrupts();
             }
 
@@ -1222,32 +1209,121 @@ class Cpu {
 
         template <typename StateType>
         void dumpState(StateType& state) {
-            //TODO: Finish dump state method
-            state.write(a, sizeof(a));
-            state.write(x, sizeof(x));
-            state.write(y, sizeof(y));
-            state.write(pc, sizeof(pc));
-            state.write(sp, sizeof(sp));
-            state.write(p, sizeof(p));
-            state.write(opcode, sizeof(opcode));
-            state.write(value, sizeof(value));
-            state.write(pointerAddress, sizeof(pointerAddress));
-            state.write(pointerAddressHigh, sizeof(pointerAddressHigh));
-            state.write(address, sizeof(address));
-            state.write(offset, sizeof(offset));
-            state.write(instrCycle, sizeof(instrCycle));
-            state.write(instrCycleStep, sizeof(instrCycleStep));
-            state.write(irqLevel, sizeof(irqLevel));
-            state.write(irqDevices, sizeof(irqDevices));
-            state.write(nmiLevel, sizeof(nmiLevel));
-            state.write(irqPending, sizeof(irqPending));
-            state.write(nmiPending, sizeof(nmiPending));
-            state.write(interruptCondition, sizeof(interruptCondition));
-            state.write(value, sizeof(value));
-            state.write(value, sizeof(value));
-            state.write(value, sizeof(value));
+            auto dump {[&] (const u8 data) {
+                //                  size in bytes
+                state.write(&data,              1);
+            }};
+
+            dump(a);
+            dump(x);
+            dump(y);
+            dump(pc & 0x00FF);
+            dump(pc >> 8);
+            dump(sp);
+            dump(p);
+            
+            {
+                u8 originalOpcode =
+                        (instrCycle == instrCycles[27].begin() + 2
+                     || instrCycle == instrCycles[27].begin() + 3) 
+                      ? 27
+                      : opcode;
+                dump(originalOpcode);
+                dump(opcode);
+                dump(value);
+                dump(pointerAddress);
+                dump(pointerAddressHigh);
+                dump(address & 0x00FF);
+                dump(address >> 8);
+                dump(offset);
+                dump(
+                        instrCycle 
+                      - instrCycles[instrTimings[originalOpcode]].begin());
+                dump(instrCycleStep);
+            }
+
+            dump(irqLevel & 0x000000FF);
+            dump(irqLevel >> 8 & 0x0000FF);
+            dump(irqLevel >> 16 & 0x00FF);
+            dump(irqLevel >> 24);
+            dump(irqDevices);
+            dump(nmiLevel);
+            dump(irqPending);
+            dump(nmiPending);
+            dump(doNotInterrupt);
+
+            dump(cycle & 0x000000FF);
+            dump(cycle >> 8 & 0x0000FF);
+            dump(cycle >> 16 & 0x00FF);
+            dump(cycle >> 24);
+            dump(timer.reload & 0x00FF);
+            dump(timer.reload >> 8);
+            dump(timer.counter & 0x00FF);
+            dump(timer.counter >> 8);
+
+            state.write(reinterpret_cast<const char*>(
+                    memory.memory.data()),
+                    0x0800);
         }
-        //TODO: Load state method
+        template <typename StateType>
+        void loadState(StateType& state) {
+            auto load {[&] () {
+                u8 result;
+                //                   size in bytes
+                state.read(&result,              1);
+                return result;
+            }};
+            
+            a = load();
+            x = load();
+            y = load();
+            pc = load();
+            pc |= load() << 8;
+            sp = load();
+            p = load();
+
+            {
+                u8 originalOpcode = load();
+                opcode = load();
+                value = load();
+                pointerAddress = load();
+                pointerAddressHigh = load();
+                address = load();
+                address |= load() << 8;
+                offset = toSigned(load());
+                instrCycle = 
+                        instrCycles[instrTimings[originalOpcode]].begin() 
+                      + load();
+                instrCycleStep = load();
+            }
+
+            irqLevel = load();
+            irqLevel |= load() << 8;
+            irqLevel |= load() << 16;
+            irqLevel |= load() << 24;
+            irqDevices = load();
+            nmiLevel = load();
+            irqPending = load();
+            nmiPending = load();
+            doNotInterrupt = load();
+
+            cycle = load();
+            cycle |= load() << 8;
+            cycle |= load() << 16;
+            cycle |= load() << 24;
+
+            u16 tmp = load();
+            tmp |= load() << 8;
+            timer.reload = toSigned(tmp); 
+
+            tmp = load();
+            tmp |= load() << 8;
+            timer.counter = toSigned(tmp); 
+
+            state.read(reinterpret_cast<char*>(
+                    memory.memory.data()), 
+                    0x0800);
+        }
 
         u8_fast connectIrq() {
             assert(irqDevices < 32 
@@ -1603,7 +1679,7 @@ class Apu {
         struct FrameCounter {
             Apu& apu;
 
-            s32_fast cycle {-3};
+            u32_fast cycle = -3;
             bool fourStep {true}; 
             bool interruptInhibit {false}; 
             u8_fast irqId;
@@ -1638,7 +1714,7 @@ class Apu {
                     apu.triangle.lengthCounter.tick();
                     apu.noise.lengthCounter.tick();
                 }
-                if (fourStep && cycle >= 29828) {
+                if (fourStep && cycle >= 29828 && cycle <= 29830) {
                     apu.cpu.pullIrq(irqId);
                 }
 
@@ -2050,6 +2126,259 @@ class Apu {
 
         void tick(const u8_fast ticks = 1) {
             timer.tick(ticks);
+        }
+
+        template <typename StateType>
+        void dumpState(StateType& state) {
+            //TODO: finish dump and load state methods
+            auto dump {[&] (const u8 data) {
+                //                  size in bytes
+                state.write(&data,              1);
+            }};
+
+            dump(cycle & 0x000000FF);
+            dump(cycle >> 8 & 0x0000FF);
+            dump(cycle >> 16 & 0x00FF);
+            dump(cycle >> 24);
+
+            auto dumpPulse {[&] (const Pulse& pulse) {
+                dump(pulse.duty);
+                dump(pulse.ignoreEnvelope);
+                //Length counter:
+                    dump(pulse.lengthCounter.enabled);
+                    dump(pulse.lengthCounter.halt);
+                    dump(pulse.lengthCounter.counter.reload & 0x00FF);
+                    dump(pulse.lengthCounter.counter.reload >> 8);
+                    dump(pulse.lengthCounter.counter.counter & 0x00FF);
+                    dump(pulse.lengthCounter.counter.counter >> 8);
+                //Envelope:
+                    dump(pulse.envelope.start);
+                    dump(pulse.envelope.loop);
+                    dump(pulse.envelope.decayLevel.reload);
+                    dump(pulse.envelope.decayLevel.counter);
+                    dump(pulse.envelope.timer.reload);
+                    dump(pulse.envelope.timer.counter);
+                //Sweep:
+                    dump(pulse.sweep.reload);
+                    dump(pulse.sweep.enabled);
+                    dump(pulse.sweep.negate);
+                    dump(pulse.sweep.trueNegate);
+                    dump(pulse.sweep.shiftCount);
+                    dump(pulse.sweep.period & 0x00FF);
+                    dump(pulse.sweep.period >> 8);
+                    dump(pulse.sweep.timer.reload);
+                    dump(pulse.sweep.timer.counter);
+                dump(pulse.sequencePos.reload);
+                dump(pulse.sequencePos.counter);
+                dump(pulse.timer.reload & 0x00FF);
+                dump(pulse.timer.reload >> 8);
+                dump(pulse.timer.counter & 0x00FF);
+                dump(pulse.timer.counter >> 8);
+            }};
+            dumpPulse(pulse1);
+            dumpPulse(pulse2);
+            
+            dump(triangle.ascending);
+            dump(triangle.volume);
+            //Linear counter:
+                dump(triangle.linearCounter.reload);
+                dump(triangle.linearCounter.control);
+                dump(triangle.linearCounter.counter.reload & 0x00FF);
+                dump(triangle.linearCounter.counter.reload >> 8);
+                dump(triangle.linearCounter.counter.counter & 0x00FF);
+                dump(triangle.linearCounter.counter.counter >> 8);
+            //Length counter:
+                dump(triangle.lengthCounter.enabled);
+                dump(triangle.lengthCounter.halt);
+                dump(triangle.lengthCounter.counter.reload & 0x00FF);
+                dump(triangle.lengthCounter.counter.reload >> 8);
+                dump(triangle.lengthCounter.counter.counter & 0x00FF);
+                dump(triangle.lengthCounter.counter.counter >> 8);
+            dump(triangle.timer.reload & 0x00FF);
+            dump(triangle.timer.reload >> 8);
+            dump(triangle.timer.counter & 0x00FF);
+            dump(triangle.timer.counter >> 8);
+
+            dump(noise.mode);
+            dump(noise.ignoreEnvelope);
+            dump(noise.lfsr & 0x00FF);
+            dump(noise.lfsr >> 8);
+            //Length counter:
+                dump(noise.lengthCounter.enabled);
+                dump(noise.lengthCounter.halt);
+                dump(noise.lengthCounter.counter.reload & 0x00FF);
+                dump(noise.lengthCounter.counter.reload >> 8);
+                dump(noise.lengthCounter.counter.counter & 0x00FF);
+                dump(noise.lengthCounter.counter.counter >> 8);
+            //Envelope:
+                dump(noise.envelope.start);
+                dump(noise.envelope.loop);
+                dump(noise.envelope.decayLevel.reload);
+                dump(noise.envelope.decayLevel.counter);
+                dump(noise.envelope.timer.reload);
+                dump(noise.envelope.timer.counter);
+            dump(noise.timer.reload & 0x00FF);
+            dump(noise.timer.reload >> 8);
+            dump(noise.timer.counter & 0x00FF);
+            dump(noise.timer.counter >> 8);
+
+            dump(dmc.irqId);
+            dump(dmc.volume);
+            dump(dmc.irqEnabled);
+            dump(dmc.silence);
+            dump(dmc.enabled);
+            dump(dmc.finished);
+            dump(dmc.loop);
+            dump(dmc.shiftRegister);
+            dump(dmc.sampleBuffer & 0x00FF);
+            dump(dmc.sampleBuffer >> 8);
+            dump(dmc.startAddress & 0x00FF);
+            dump(dmc.startAddress >> 8);
+            dump(dmc.address & 0x00FF);
+            dump(dmc.address >> 8);
+
+            dump(frameCounter.cycle & 0x000000FF);
+            dump(frameCounter.cycle >> 8 & 0x0000FF);
+            dump(frameCounter.cycle >> 16 & 0x00FF);
+            dump(frameCounter.cycle >> 24);
+            dump(frameCounter.fourStep);
+            dump(frameCounter.interruptInhibit);
+            dump(frameCounter.irqId);
+        }
+
+        template <typename StateType>
+        void loadState(StateType& state) {
+            u16 tmp;
+            auto load {[&] () {
+                u8 result;
+                //                  size in bytes 
+                state.read(&result,             1);
+                return result;
+            }};
+
+            cycle = load();
+            cycle |= load() << 8;
+            cycle |= load() << 16;
+            cycle |= load() << 24;
+
+            auto loadPulse {[&] (Pulse& pulse) {
+                pulse.duty = load();
+                pulse.ignoreEnvelope = load();
+                //Length counter:
+                    pulse.lengthCounter.enabled = load();
+                    pulse.lengthCounter.halt = load();
+                    tmp = load();
+                    tmp |= load() << 8;
+                    pulse.lengthCounter.counter.reload = toSigned(tmp); 
+                    tmp = load();
+                    tmp |= load() << 8;
+                    pulse.lengthCounter.counter.counter = toSigned(tmp);
+                //Envelope:
+                    pulse.envelope.start = load();
+                    pulse.envelope.loop = load();
+                    pulse.envelope.decayLevel.reload = toSigned(load());
+                    pulse.envelope.decayLevel.counter = toSigned(load());
+                    pulse.envelope.timer.reload = toSigned(load());
+                    pulse.envelope.timer.counter = toSigned(load());
+                //Sweep:
+                    pulse.sweep.reload = load();
+                    pulse.sweep.enabled = load();
+                    pulse.sweep.negate = load();
+                    pulse.sweep.trueNegate = load();
+                    pulse.sweep.shiftCount = load();
+                    pulse.sweep.period = load();
+                    pulse.sweep.period |= load() << 8;
+                    pulse.sweep.timer.reload = toSigned(load());
+                    pulse.sweep.timer.counter = toSigned(load());
+                pulse.sequencePos.reload = toSigned(load());
+                pulse.sequencePos.counter = toSigned(load());
+                tmp = load();
+                tmp |= load() << 8;
+                pulse.timer.reload = toSigned(tmp);
+                tmp = load();
+                tmp |= load() << 8;
+                pulse.timer.counter = toSigned(tmp);
+            }};
+            loadPulse(pulse1);
+            loadPulse(pulse2);
+
+            triangle.ascending = load();
+            triangle.volume = load();
+            //Linear counter:
+                triangle.linearCounter.reload = load(); 
+                triangle.linearCounter.control = load();
+                tmp = load();
+                tmp |= load() << 8;
+                triangle.linearCounter.counter.reload = toSigned(tmp);
+                tmp = load();
+                tmp |= load() << 8;
+                triangle.linearCounter.counter.counter = toSigned(tmp);
+            //Length counter:
+                triangle.lengthCounter.enabled = load();
+                triangle.lengthCounter.halt = load();
+                tmp = load();
+                tmp |= load() << 8;
+                triangle.lengthCounter.counter.reload = toSigned(tmp); 
+                tmp = load();
+                tmp |= load() << 8;
+                triangle.lengthCounter.counter.counter = toSigned(tmp);
+            tmp = load();
+            tmp |= load() << 8;
+            triangle.timer.reload = toSigned(tmp);
+            tmp = load();
+            tmp |= load() << 8;
+            triangle.timer.counter = toSigned(tmp);
+
+            noise.mode = load();
+            noise.ignoreEnvelope = load();
+            noise.lfsr = load();
+            noise.lfsr |= load() << 8;
+            //Length counter:
+                noise.lengthCounter.enabled = load();
+                noise.lengthCounter.halt = load();
+                tmp = load();
+                tmp |= load() << 8;
+                noise.lengthCounter.counter.reload = toSigned(tmp); 
+                tmp = load();
+                tmp |= load() << 8;
+                noise.lengthCounter.counter.counter = toSigned(tmp);
+            //Envelope:
+                noise.envelope.start = load();
+                noise.envelope.loop = load();
+                noise.envelope.decayLevel.reload = toSigned(load());
+                noise.envelope.decayLevel.counter = toSigned(load());
+                noise.envelope.timer.reload = toSigned(load());
+                noise.envelope.timer.counter = toSigned(load());
+            tmp = load();
+            tmp |= load() << 8;
+            noise.timer.reload = toSigned(tmp);
+            tmp = load();
+            tmp |= load() << 8;
+            noise.timer.counter = toSigned(tmp);
+
+            dmc.irqId = load();
+            dmc.volume = load();
+            dmc.irqEnabled = load();
+            dmc.silence = load();
+            dmc.enabled = load();
+            dmc.finished = load();
+            dmc.loop = load();
+            dmc.shiftRegister = load();
+            tmp = load();
+            tmp |= load() << 8;
+            dmc.sampleBuffer = toSigned(tmp);
+            dmc.startAddress = load();
+            dmc.startAddress |= load() << 8;
+            dmc.address = load();
+            dmc.address |= load() << 8;
+
+            frameCounter.cycle = load();
+            frameCounter.cycle |= load() << 8;
+            frameCounter.cycle |= load() << 16;
+            frameCounter.cycle |= load() << 24;
+            frameCounter.fourStep = load();
+            frameCounter.interruptInhibit = load();
+            frameCounter.irqId = load();
         }
 };
 
